@@ -21,8 +21,8 @@ def load_ollama_models():
     # Load a Hugging Face LLM pipeline
     llm = pipeline(
         "text-generation",
-        model="mistralai/Mistral-7B-Instruct-v0.1",
-        tokenizer="mistralai/Mistral-7B-Instruct-v0.1",
+        model="Qwen/Qwen3-32B",
+        tokenizer="Qwen/Qwen3-32B"
         device_map="auto",
         max_length=512,
         do_sample=True,
