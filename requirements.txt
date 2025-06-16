@@ -9,3 +9,4 @@ langchain_ollama
 faiss-cpu
 streamlit_calendar
 langchain_community
+PyPDF2
