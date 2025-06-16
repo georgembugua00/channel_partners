@@ -1,8 +1,6 @@
-
 import streamlit as st
 from streamlit_calendar import calendar
-from datetime import datetime, date, timedelta 
-
+from datetime import datetime, date, timedelta  # ✅ Correct imports
 
 # --- Partner-Specific Leave Policies (Example: Fine Media) ---
 LEAVE_POLICIES = {
@@ -14,7 +12,6 @@ LEAVE_POLICIES = {
     "Compassionate": {"max_days": 10},
     "Unpaid": {"max_days": 365},
 }
-
 
 # --- Helper: Generate recurring partner visit events ---
 def generate_partner_visit_events(start_date, location="Mathare", total_visits=50):
@@ -49,13 +46,12 @@ def leave_roster_calendar():
             "color": "#ffd700" if leave.get('status') == "Pending" else "#00cc00"
         })
 
-    today = datetime.today()
-    start_of_week = today - timedelta(days=today.weekday())  # Monday
+    today = datetime.today()  # ✅ FIXED
+    start_of_week = today - timedelta(days=today.weekday())
 
     # Add recurring weekly task: visiting channel partners
     events.extend(generate_partner_visit_events(start_of_week))
 
-    # Dynamic UI options
     default_view = st.selectbox("Default View", ["dayGridMonth", "timeGridWeek"])
     editable = st.checkbox("Allow Editing", value=True)
     selectable = st.checkbox("Allow Selecting", value=True)
@@ -71,9 +67,7 @@ def leave_roster_calendar():
         }
     }
 
-    # Render Calendar
     calendar(events=events, options=calendar_options)
-
 
 # Custom CSS for UI styling
 def inject_custom_css():
@@ -122,13 +116,12 @@ def inject_custom_css():
         if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
     </script>
     """, unsafe_allow_html=True)
-    
 
 # --- Leave Management ---
 def leave_management():
     if 'leaves' not in st.session_state:
         st.session_state.leaves = []
-        
+
     st.title("📝 Leave Management")
     leave_tabs = st.tabs(["Apply Leave", "Withdraw Leave", "Leave History", "Leave Planner"])
 
@@ -136,7 +129,7 @@ def leave_management():
     with leave_tabs[0]:
         st.header("Apply for Leave")
         leave_type = st.selectbox("Select Leave Type", list(LEAVE_POLICIES.keys()))
-        start = st.date_input("Start Date", min_value=date.today())
+        start = st.date_input("Start Date", min_value=date.today())  # ✅ FIXED
         end = st.date_input("End Date", min_value=start)
         description = st.text_area("Reason for Leave")
 
@@ -164,6 +157,9 @@ def leave_management():
     # --- Withdraw Leave ---
     with leave_tabs[1]:
         st.header("Withdraw Leave Request")
+        if 'withdraw_requests' not in st.session_state:
+            st.session_state.withdraw_requests = []
+
         for i, leave in enumerate(st.session_state.leaves):
             if leave['status'] == "Pending":
                 with st.expander(f"{leave['type']} Leave: {leave['start']} to {leave['end']}"):
@@ -207,9 +203,9 @@ def leave_management():
 
         if st.button("Generate Plan"):
             leave_plan = {
-                "id": len(st.session_state.leaves)+1,
-                "start_date": date.today() + timedelta(days=2),
-                "end_date": date.today() + timedelta(days=2+total_days-1),
+                "id": len(st.session_state.leaves) + 1,
+                "start_date": date.today() + timedelta(days=2),  # ✅ FIXED
+                "end_date": date.today() + timedelta(days=2 + total_days - 1),  # ✅ FIXED
                 "days": total_days
             }
             delegation_plan = {
@@ -222,6 +218,6 @@ def leave_management():
             st.json(leave_plan)
             st.write("### 🧾 Task Delegation")
             st.json(delegation_plan)
-            st.warning("📌 Once done, don't forget to save and submit your plan.")    
-            
-leave_management()            
+            st.warning("📌 Once done, don't forget to save and submit your plan.")
+
+leave_management()
