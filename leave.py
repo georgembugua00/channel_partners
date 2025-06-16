@@ -4,6 +4,8 @@ from streamlit_calendar import calendar
 from datetime import date, timedelta
 import datetime
 
+
+
 # --- Partner-Specific Leave Policies (Example: Fine Media) ---
 LEAVE_POLICIES = {
     "Annual": {"max_days": 21},
@@ -127,6 +129,9 @@ def inject_custom_css():
 
 # --- Leave Management ---
 def leave_management():
+    if 'leaves' not in st.session_state:
+        st.session_state.leaves = []
+        
     st.title("📝 Leave Management")
     leave_tabs = st.tabs(["Apply Leave", "Withdraw Leave", "Leave History", "Leave Planner"])
 
