@@ -19,13 +19,13 @@ import datetime
 import base64
 from ollama import Client
 import os
-
-USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() == "true"
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen1.5-7B-Chat")
-    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen1.5-7B-Chat")
+    model_name = "mistralai/Mistral-7B-Instruct-v0.2"
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
 
     llm = pipeline(
         "text-generation",
@@ -38,9 +38,7 @@ def load_ollama_models():
     )
 
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    minicpm_llm = None  # if not using Ollama for now
-
-    return llm, minicpm_llm, embedder
+    return llm, None, embedder
 
 # ✅ Make sure to call it BEFORE using `llm`
 llm, minicpm, embedder = load_ollama_models()
