@@ -1,7 +1,5 @@
 import streamlit as st
-from langchain_ollama import ChatOllama
 from langchain.vectorstores import FAISS
-from langchain.embeddings import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain.chains import ConversationalRetrievalChain
@@ -15,7 +13,6 @@ import pandas as pd
 import re
 import datetime
 import base64
-from ollama import Client
 
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
