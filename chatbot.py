@@ -1,4 +1,16 @@
 import streamlit as st
+import sqlite3
+from datetime import date, timedelta
+import pandas as pd
+from streamlit_calendar import calendar
+import os
+import json
+import datetime
+from PyPDF2 import PdfReader
+import streamlit.components.v1 as components
+import re
+import time
+# --- New LLM imports ---
 from langchain_ollama import ChatOllama
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OllamaEmbeddings
@@ -9,173 +21,136 @@ from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import SystemMessage
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
-from PyPDF2 import PdfReader
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-from sentence_transformers import SentenceTransformer
-import json
-import pandas as pd
-import re
-import datetime
-import os
+
 # --- Initialize LLM + Embeddings ---
-
-
-
 @st.cache_resource
 def load_ollama_models():
-    
-    llm = ChatOllama(model='llama3')
-    
-    if "memory" not in st.session_state:
-        st.session_state.memory = ConversationBufferMemory(return_messages=True)
-    
-    embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    return llm, None, embedder
+    llm = ChatOllama(model="llama3.2", temperature=0.4)
+    embedder = OllamaEmbeddings(model="nomic-embed-text")
+    return llm, embedder
 
-# ✅ Make sure to call it BEFORE using `llm`
-llm, minicpm, embedder = load_ollama_models()
+llm, embedder = load_ollama_models()
 
+# Initialize session state
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'tickets' not in st.session_state:
+    st.session_state.tickets = []
+if 'leaves' not in st.session_state:
+    st.session_state.leaves = []
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+if 'escalated_issues' not in st.session_state:
+    st.session_state.escalated_issues = []
+if 'nav_choice' not in st.session_state:
+    st.session_state.nav_choice = "Home"
+if 'Ticketing' not in st.session_state:
+    st.session_state.ticket_view = []    
 
-# --- Custom CSS for UI styling ---
+# --- New LLM session state variables ---
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+if "chat_chain" not in st.session_state:
+    # Initialize with a simple conversation chain
+    template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. 
+    Your job is to support Sales Executives who manage over 200 on-the-ground agents. 
+    Help them with operations, float requests, KYC issues, training updates, and urgent tickets. 
+    Always respond professionally, concisely, and with context relevant to Airtel's field operations.
+    
+    Current conversation:
+    {chat_history}
+    Human: {input}
+    Assistant:"""
+    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
+    st.session_state.chat_chain = ConversationChain(
+        llm=llm,
+        memory=st.session_state.memory,
+        prompt=prompt
+    )
+
+# Custom CSS for UI styling
 def inject_custom_css():
-    st.html("""
+    st.markdown("""
     <style>
-        /* General styling for the app */
-        .stApp {
-            background-color: #000000; /* Black background for the entire app */
-            color: #F0F0F0; /* Light grey text for the entire app */
-            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        }
-
-        /* Header styling */
-        h1, h2, h3, h4, h5, h6 {
-            color: #FF4B4B; /* Airtel-like red for headers */
-        }
-
-        /* Chat container styling */
-        .chat-container {
-            display: flex;
-            flex-direction: column;
-            gap: 15px; /* Space between messages */
-            padding: 10px;
-            max-height: 70vh; /* Limit height to enable scrolling */
-            overflow-y: auto; /* Enable vertical scrolling */
+        .profile-card {
+            background-color: red;
+            padding: 20px;
             border-radius: 10px;
-            background-color: #333333; /* Dark grey background for chat area */
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); /* More prominent shadow on dark background */
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(255, 255, 255, 0.1);
         }
-
-        /* Individual chat message styling */
         .chat-message {
-            border-radius: 18px; /* More rounded corners */
-            padding: 12px 18px;
-            max-width: 80%; /* Slightly wider max-width */
+            border-radius: 12px;
+            padding: 10px 15px;
+            margin: 10px 0;
+            max-width: 75%;
             word-wrap: break-word;
-            line-height: 1.5;
-            display: flex; /* Use flexbox to arrange content and timestamp */
-            flex-direction: column; /* Stack content and timestamp vertically */
-            position: relative; /* Keep relative for potential future absolute elements */
         }
-
-        /* User message styling */
         .user-message {
-            background-color: #2c2c2c; /* Darker grey for user messages */
-            color: #FFFFFF; /* White text for user messages */
+            background-color: #e0e0e0;
+            color: black;
             align-self: flex-end;
             margin-left: auto;
-            border-bottom-right-radius: 4px; /* Tail effect */
         }
-
-        /* Bot message styling */
         .bot-message {
-            background-color: #FF4B4B; /* Red for bot messages */
-            color: white; /* White text for better contrast on red */
+            background-color: #f44336;
+            color: white;
             align-self: flex-start;
             margin-right: auto;
-            border-bottom-left-radius: 4px; /* Tail effect */
         }
-
-        /* Timestamp styling */
         .timestamp {
-            font-size: 0.7em;
-            color: rgba(255, 255, 255, 0.7); /* Lighter transparent white for user on dark background */
-            margin-top: 5px; /* Space between message content and timestamp */
-            align-self: flex-end; /* Align timestamp to the right within the message bubble */
+            font-size: 0.75em;
+            color: #999;
+            text-align: right;
+            margin-top: 4px;
         }
-        .bot-message .timestamp {
-            color: rgba(255, 255, 255, 0.8); /* Slightly more opaque white for bot on red background */
-            align-self: flex-start; /* Align timestamp to the left within the bot message bubble */
+        .chat-box {
+            display: flex;
+            flex-direction: column;
         }
-
-        /* Quick actions styling */
-        .stButton>button {
-            background-color: #FF4B4B; /* Red buttons */
-            color: white;
-            border-radius: 8px;
-            border: none;
-            padding: 10px 15px;
-            font-size: 1em;
-            margin: 5px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-            transition: background-color 0.3s ease;
-        }
-        .stButton>button:hover {
-            background-color: #E03E3E; /* Darker red on hover */
-        }
-
-        /* Input area styling */
-        .stTextInput>div>div>input {
-            border-radius: 20px;
-            padding: 10px 15px;
-            border: 1px solid #555555; /* Darker grey border for inputs */
-            background-color: #1a1a1a; /* Dark background for input field */
-            color: #f0f0f0; /* Light text color for input field */
-        }
-        .stFileUploader>div>button {
-            background-color: #007BFF; /* Blue for upload */
-            color: white;
-            border-radius: 8px;
-            padding: 8px 12px;
-            font-size: 0.9em;
-        }
-
-        /* Scroll to bottom of chat */
-        .main .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
-        }
-        /* Custom scrollbar for chat container */
-        .chat-container::-webkit-scrollbar {
-            width: 8px;
-        }
-        .chat-container::-webkit-scrollbar-track {
-            background: #222222; /* Dark track */
-            border-radius: 10px;
-        }
-        .chat-container::-webkit-scrollbar-thumb {
-            background: #555555; /* Grey thumb */
-            border-radius: 10px;
-        }
-        .chat-container::-webkit-scrollbar-thumb:hover {
-            background: #777777;
-        }
-
     </style>
     <script>
-        // Scroll to the bottom of the chat on new messages
-        function scrollToBottom() {
-            const chatContainer = window.parent.document.querySelector('.chat-container');
-            if (chatContainer) {
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-        }
-        // Call it after the page loads or updates
-        window.onload = scrollToBottom;
-        window.parent.document.addEventListener('DOMContentLoaded', scrollToBottom);
+        const chatContainer = window.parent.document.querySelector('.main');
+        if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
     </script>
-    """)
+    """, unsafe_allow_html=True)
 
-    def chatbot():
+# --- File Processing for RAG ---
+def process_file(file):
+    docs = []
+    if file.name.endswith(".pdf"):
+        reader = PdfReader(file)
+        raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        docs = [Document(page_content=raw_text)]
+    elif file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+        raw_text = df.to_string()
+        docs = [Document(page_content=raw_text)]
+    elif file.name.endswith((".xlsx", ".xls")):
+        df = pd.read_excel(file)
+        raw_text = df.to_string()
+        docs = [Document(page_content=raw_text)]
+
+    # Split and embed
+    if docs:
+        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        splits = splitter.split_documents(docs)
+        st.session_state.vector_store = FAISS.from_documents(splits, embedder)
+        
+        # Update RAG chain
+        st.session_state.chat_chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=st.session_state.vector_store.as_retriever(),
+            memory=st.session_state.memory,
+            output_key="answer"
+        )
+        return True
+    return False
+
+def chatbot():
     st.header("🤖 Airtel AI Assistant - Lulu")
     inject_custom_css()
 
@@ -226,7 +201,6 @@ def inject_custom_css():
             json.dump(st.session_state.chat_messages, f, indent=2)
         st.success("Chat history exported to chat_history.json ✅")
 
-# ---- HELPER FUNCTIONS ----
 def parse_thoughts(response_text):
     # Extract text inside <think>...</think>
     match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
@@ -236,6 +210,8 @@ def parse_thoughts(response_text):
         return thought, cleaned_response
     return None, response_text
 
+
+# Load shop data from JSON file
 with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
     SHOP_LOCATIONS = json.load(f)
 
@@ -260,6 +236,7 @@ def is_shop_query(user_input):
 
 def handle_user_input(user_input):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     # Add user message to history
     st.session_state.chat_messages.append({
         "role": "user",
@@ -269,7 +246,7 @@ def handle_user_input(user_input):
     
     with st.spinner("Thinking..."):
         # Determine which input key to use based on chain type
-        if st.session_state.get("vector_store", None):
+        if st.session_state.vector_store:
             # Using ConversationalRetrievalChain - requires "question" key
             inputs = {"question": user_input}
         else:
@@ -279,8 +256,10 @@ def handle_user_input(user_input):
         result = st.session_state.chat_chain.invoke(inputs)
 
         # Handle both output types gracefully
-        if isinstance(result, dict):
-            response = result.get('answer') or result.get('response') or str(result)
+        if 'answer' in result:
+            response = result['answer']
+        elif 'response' in result:
+            response = result['response']
         else:
             response = str(result)  # fallback
 
@@ -299,6 +278,7 @@ def handle_user_input(user_input):
                 else:
                     st.write("Sorry, we couldn’t find a matching shop. Try specifying the town or shop name.")
 
+
     # Add assistant response to history
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     st.session_state.chat_messages.append({
@@ -306,6 +286,7 @@ def handle_user_input(user_input):
         "content": response,
         "timestamp": timestamp
     })
+    
     # Refresh to show new messages
     st.rerun()
 
@@ -319,14 +300,3 @@ def handle_user_input(user_input):
             "status": "Pending",
             "response": response
         })
-
-# ---- OPTIONAL: Add your custom CSS injection function here ----
-def inject_custom_css():
-    # Insert your styling here if needed
-    pass
-
-# ---- RUN APP ----
-chatbot()
-
-
-
