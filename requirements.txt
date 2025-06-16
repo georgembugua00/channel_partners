@@ -12,3 +12,4 @@ sentence-transformers==2.7.0
 langchain
 langchain_ollama
 langchain-community
+streamlit-calendar
