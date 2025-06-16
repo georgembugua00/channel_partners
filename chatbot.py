@@ -23,7 +23,7 @@ import os
 @st.cache_resource
 def load_ollama_models():
     
-    llm = ChatOllama(model='llama3'
+    llm = ChatOllama(model='llama3')
 
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     return llm, None, embedder
