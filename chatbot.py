@@ -22,12 +22,6 @@ USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() == "true"
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    if USE_OLLAMA:
-        from ollama import Client
-        minicpm_llm = Client().chat(model='minicpm-v:8b')
-    else:
-        minicpm_llm = None
-
     from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
     from sentence_transformers import SentenceTransformer
 
@@ -45,8 +39,20 @@ def load_ollama_models():
     )
 
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    minicpm_llm = None  # if not using Ollama for now
 
     return llm, minicpm_llm, embedder
+
+# ✅ Make sure to call it BEFORE using `llm`
+llm, minicpm, embedder = load_ollama_models()
+
+# ✅ Now safely use `llm`
+st.session_state.chat_chain = ConversationChain(
+    llm=llm,
+    memory=st.session_state.memory,
+    prompt=prompt
+)
+
 
 # --- Custom CSS for UI styling ---
 def inject_custom_css():
