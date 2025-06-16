@@ -212,7 +212,7 @@ def parse_thoughts(response_text):
 
 
 # Load shop data from JSON file
-with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
+with open("shop_location.json", "r") as f:
     SHOP_LOCATIONS = json.load(f)
 
 def find_shop_by_keyword(query):
