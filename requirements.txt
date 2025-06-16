@@ -6,3 +6,4 @@ ollama
 dotenv
 langchain
 langchain_ollama
+faiss-cpu
