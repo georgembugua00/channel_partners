@@ -30,9 +30,9 @@ OLLAMA_EMBED_MODEL = "nomic-embed-text" # Embedding model for vector store
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    qwen_llm = None
+    qwen_llm = "llama4:16x17b"
     ollama_client = None
-    embedder = None
+    embedder = "nomic-embed-text"
     try:
         # Initialize Ollama client for general text conversations
         qwen_llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
