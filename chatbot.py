@@ -175,7 +175,58 @@ def inject_custom_css():
     </script>
     """)
 
-# --- Helper functions for parsing and data loading ---
+    def chatbot():
+    st.header("🤖 Airtel AI Assistant - Lulu")
+    inject_custom_css()
+
+    # Theme toggle
+    theme = st.radio("Choose Theme", ["Light", "Dark"], horizontal=True)
+    if theme == "Dark":
+        st.markdown("""<style>body { background-color: #121212; color: white; }</style>""", unsafe_allow_html=True)
+
+    # Initialize chat history
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+
+    # Display chat history
+    for msg in st.session_state.chat_messages:
+        div_class = "user-message" if msg["role"] == "user" else "bot-message"
+        timestamp = f'<div class="timestamp">{msg["timestamp"]}</div>'
+        st.markdown(f"""
+        <div class="chat-box">
+            <div class="chat-message {div_class}">
+                {msg["content"]}
+            </div>
+            {timestamp}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Quick actions
+    if len(st.session_state.chat_messages) == 0:
+        st.subheader('Quick Actions')
+        col1, col2 = st.columns(2)
+        quick_responses = ["KYC Approval", "Float Issues", "Create a Ticket", "Onboarding Steps", "Follow Up on Ticket"]
+        with col1:
+            for response in quick_responses[:2]:
+                if st.button(response):
+                    handle_user_input(response)
+        with col2:
+            for response in quick_responses[2:]:
+                if st.button(response):
+                    handle_user_input(response)
+
+    # Chat input
+    user_input = st.chat_input("Ask a question...")
+    if user_input:
+        handle_user_input(user_input)
+
+    # Export Chat
+    if st.button("📄 Export Chat as JSON"):
+        with open("chat_history.json", "w") as f:
+            json.dump(st.session_state.chat_messages, f, indent=2)
+        st.success("Chat history exported to chat_history.json ✅")
+
+# ---- HELPER FUNCTIONS ----
 def parse_thoughts(response_text):
     # Extract text inside <think>...</think>
     match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
@@ -185,13 +236,8 @@ def parse_thoughts(response_text):
         return thought, cleaned_response
     return None, response_text
 
-# Load shop data from JSON file (ensure this path is correct on your system)
-try:
-    with open("shop_location.json", "r") as f:
-        SHOP_LOCATIONS = json.load(f)
-except FileNotFoundError:
-    st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
-    SHOP_LOCATIONS = {} # Initialize as empty to prevent further errors
+with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
+    SHOP_LOCATIONS = json.load(f)
 
 def find_shop_by_keyword(query):
     for shop_name, shop_data in SHOP_LOCATIONS.items():
@@ -202,172 +248,85 @@ def find_shop_by_keyword(query):
 def format_shop_info(shop_data):
     name = shop_data.get("SHOP NAME", "N/A")
     location = shop_data.get("PHYSICAL LOCATION", "N/A")
-    # plus_code = shop_data.get("Plus Code", "") # Not used in output
+    plus_code = shop_data.get("Plus Code", "")
     lat = shop_data.get("Latitude")
     lon = shop_data.get("Longitude")
-    # Corrected Google Maps link format
     maps_link = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}" if lat and lon else ""
     return f"**{name}**\n📍 {location}\n🕒 {shop_data.get('Business Hours', '')}\n🌍 [View on Maps]({maps_link})"
 
 def is_shop_query(user_input):
-    keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
+    keywords = ["shop", "location", "nearest shop", "where can I find"]
     return any(k in user_input.lower() for k in keywords)
-
-
-
-# --- New LLM session state variables ---
-if "vector_store" not in st.session_state:
-    st.session_state.vector_store = None
-if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-if "chat_chain" not in st.session_state:
-    template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
-    Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
-    Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
-    Always respond professionally, concisely, and with context relevant to Airtel's field operations.
-
-    Current conversation:
-    {chat_history}
-    Human: {input}
-    Assistant:"""
-    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
-    st.session_state.chat_chain = ConversationChain(
-        llm=llm, # This is the ChatOllama instance
-        memory=st.session_state.memory,
-        prompt=prompt
-    )
 
 def handle_user_input(user_input):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
     # Add user message to history
     st.session_state.chat_messages.append({
         "role": "user",
         "content": user_input,
         "timestamp": timestamp
     })
-
-    with st.spinner("Lulu is thinking..."):
+    
+    with st.spinner("Thinking..."):
         # Determine which input key to use based on chain type
-        # For ConversationChain, it always expects 'input'
-        inputs = {"input": user_input}
+        if st.session_state.get("vector_store", None):
+            # Using ConversationalRetrievalChain - requires "question" key
+            inputs = {"question": user_input}
+        else:
+            # Using ConversationChain - requires "input" key
+            inputs = {"input": user_input}
+            
+        result = st.session_state.chat_chain.invoke(inputs)
 
-        try:
-            result = st.session_state.chat_chain.invoke(inputs)
+        # Handle both output types gracefully
+        if isinstance(result, dict):
+            response = result.get('answer') or result.get('response') or str(result)
+        else:
+            response = str(result)  # fallback
 
-            # Handle both output types gracefully (ChatOllama usually returns AIMessage which has .content)
-            response = result.content if hasattr(result, 'content') else str(result)
-
-            # Parse thoughts if any
-            thought, cleaned_response = parse_thoughts(response)
-            if thought:
-                with st.expander("🤖 Internal reasoning"):
-                    st.markdown(thought)
-                response = cleaned_response
-
-            # Add bot message to history
-            st.session_state.chat_messages.append({
-                "role": "bot",
-                "content": response,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-
-            # Special handling for shop queries after LLM response
+        # Parse thoughts if any
+        thought, cleaned_response = parse_thoughts(response)
+        if thought:
+            with st.expander("🤖 Internal reasoning"):
+                st.markdown(thought)
+            response = cleaned_response
+            
+        if user_input:
             if is_shop_query(user_input):
                 shop_data = find_shop_by_keyword(user_input)
                 if shop_data:
-                    shop_info = format_shop_info(shop_data)
-                    # Add shop info as a separate bot message for clear display
-                    st.session_state.chat_messages.append({
-                        "role": "bot",
-                        "content": f"Here's the information for the shop you requested:\n\n{shop_info}",
-                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
+                    st.markdown(format_shop_info(shop_data))
                 else:
-                    st.session_state.chat_messages.append({
-                        "role": "bot",
-                        "content": "Sorry, I couldn’t find a matching shop. Please try specifying the town or shop name more clearly.",
-                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    })
-            # Rerun to update chat display
-            st.rerun()
+                    st.write("Sorry, we couldn’t find a matching shop. Try specifying the town or shop name.")
 
-        except httpx.ConnectError:
-            st.error(f"Chatbot Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
-                     "Please ensure Ollama is running and accessible. Re-run the app once Ollama is active.")
-            st.session_state.chat_messages.append({
-                "role": "bot",
-                "content": "I'm unable to connect to the AI model right now. Please ensure Ollama is running and try again.",
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-            st.rerun()
-        except Exception as e:
-            st.error(f"An unexpected error occurred during chatbot interaction: {e}")
-            st.session_state.chat_messages.append({
-                "role": "bot",
-                "content": "An error occurred while processing your request. Please try again or rephrase your question.",
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-            st.rerun()
+    # Add assistant response to history
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.session_state.chat_messages.append({
+        "role": "assistant",
+        "content": response,
+        "timestamp": timestamp
+    })
+    # Refresh to show new messages
+    st.rerun()
 
+    # Escalate if needed
+    if "sorry" in response.lower() or "unable" in response.lower():
+        st.warning("Escalating to support team.")
+        if "escalated_issues" not in st.session_state:
+            st.session_state.escalated_issues = []
+        st.session_state.escalated_issues.append({
+            "query": user_input,
+            "status": "Pending",
+            "response": response
+        })
 
-# --- AI Chatbot ---
-def chatbot():
-    st.header("🤖 Airtel AI Assistant - Lulu")
-    inject_custom_css()
+# ---- OPTIONAL: Add your custom CSS injection function here ----
+def inject_custom_css():
+    # Insert your styling here if needed
+    pass
 
-    if "chat_messages" not in st.session_state:
-        st.session_state.chat_messages = []
-
-    # Display chat messages in a dedicated container for better scrolling
-    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-    for msg in st.session_state.chat_messages:
-        div_class = "user-message" if msg["role"] == "user" else "bot-message"
-        timestamp_align = "text-align: right;" if msg["role"] == "user" else "text-align: left;"
-        st.markdown(f"""
-        <div style="display: flex; {"justify-content: flex-end;" if msg["role"] == "user" else "justify-content: flex-start;"}">
-            <div class="chat-message {div_class}">
-                {msg["content"]}
-                <div class="timestamp" style="{timestamp_align}">
-                    {msg["timestamp"]}
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True) # Close chat container
-
-    # Quick actions only shown at the start of a conversation
-    if len(st.session_state.chat_messages) == 0:
-        st.markdown("<br>", unsafe_allow_html=True) # Add some space
-        st.subheader('Quick Actions')
-        col1, col2 = st.columns(2)
-        quick_responses = ["KYC Approval", "Float Issues","Onboarding Steps", "Follow Up on Ticket"]
-        with col1:
-            for response in quick_responses[:2]:
-                if st.button(response, key=f"quick_action_{response}"): # Add unique key
-                    handle_user_input(response)
-        with col2:
-            for response in quick_responses[2:]:
-                if st.button(response, key=f"quick_action_{response}"): # Add unique key
-                    handle_user_input(response)
-
-    st.markdown("<br>", unsafe_allow_html=True) # Add some space before input
-
-    uploaded_image = st.file_uploader("📎 Upload Screenshot (Optional)", type=["png", "jpg", "jpeg"])
-    user_text_input = st.chat_input("Ask Lulu a question...")
-
-    current_input = None
-
-    user_text_input = st.chat_input("Ask Lulu a question...")
-    
-    if user_text_input:
-        handle_user_input(user_text_input)
-
-    st.markdown("<br>", unsafe_allow_html=True) # Add some space
-    if st.button("📄 Export Chat as JSON"):
-        with open("chat_history.json", "w") as f:
-            json.dump(st.session_state.chat_messages, f, indent=2)
-        st.success("Chat history exported to chat_history.json ✅")
-
-# Run the chatbot application
+# ---- RUN APP ----
 chatbot()
+
+
+
