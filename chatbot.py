@@ -22,20 +22,8 @@ import os
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
-
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-
-    llm = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        device_map="auto",
-        max_length=512,
-        do_sample=True,
-        temperature=0.4
-    )
+    
+    llm = ChatOllama(model='llama3'
 
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     return llm, None, embedder
