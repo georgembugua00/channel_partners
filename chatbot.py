@@ -92,8 +92,8 @@ def inject_custom_css():
     <style>
         /* General styling for the app */
         .stApp {
-            background-color: #FFFFFF; /* Pure white background for the entire app */
-            color: #212529; /* Dark text for the entire app */
+            background-color: #000000; /* Black background for the entire app */
+            color: #F0F0F0; /* Light grey text for the entire app */
             font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
 
@@ -111,8 +111,8 @@ def inject_custom_css():
             max-height: 70vh; /* Limit height to enable scrolling */
             overflow-y: auto; /* Enable vertical scrolling */
             border-radius: 10px;
-            background-color: #EFEFEF; /* Light grey background for chat area */
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* Subtle shadow */
+            background-color: #333333; /* Dark grey background for chat area */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); /* More prominent shadow on dark background */
         }
 
         /* Individual chat message styling */
@@ -129,8 +129,8 @@ def inject_custom_css():
 
         /* User message styling */
         .user-message {
-            background-color: #FFFFFF; /* White for user messages */
-            color: #212121; /* Black text for user messages */
+            background-color: #2c2c2c; /* Darker grey for user messages */
+            color: #FFFFFF; /* White text for user messages */
             align-self: flex-end;
             margin-left: auto;
             border-bottom-right-radius: 4px; /* Tail effect */
@@ -148,12 +148,12 @@ def inject_custom_css():
         /* Timestamp styling */
         .timestamp {
             font-size: 0.7em;
-            color: rgba(0, 0, 0, 0.6); /* Slightly transparent black for user */
+            color: rgba(255, 255, 255, 0.7); /* Lighter transparent white for user on dark background */
             margin-top: 5px; /* Space between message content and timestamp */
             align-self: flex-end; /* Align timestamp to the right within the message bubble */
         }
         .bot-message .timestamp {
-            color: rgba(255, 255, 255, 0.7); /* Slightly transparent white for bot on red background */
+            color: rgba(255, 255, 255, 0.8); /* Slightly more opaque white for bot on red background */
             align-self: flex-start; /* Align timestamp to the left within the bot message bubble */
         }
 
@@ -166,7 +166,7 @@ def inject_custom_css():
             padding: 10px 15px;
             font-size: 1em;
             margin: 5px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             transition: background-color 0.3s ease;
         }
         .stButton>button:hover {
@@ -177,7 +177,9 @@ def inject_custom_css():
         .stTextInput>div>div>input {
             border-radius: 20px;
             padding: 10px 15px;
-            border: 1px solid #CED4DA;
+            border: 1px solid #555555; /* Darker grey border for inputs */
+            background-color: #1a1a1a; /* Dark background for input field */
+            color: #f0f0f0; /* Light text color for input field */
         }
         .stFileUploader>div>button {
             background-color: #007BFF; /* Blue for upload */
@@ -197,15 +199,15 @@ def inject_custom_css():
             width: 8px;
         }
         .chat-container::-webkit-scrollbar-track {
-            background: #f1f1f1; /* Light track */
+            background: #222222; /* Dark track */
             border-radius: 10px;
         }
         .chat-container::-webkit-scrollbar-thumb {
-            background: #888; /* Grey thumb */
+            background: #555555; /* Grey thumb */
             border-radius: 10px;
         }
         .chat-container::-webkit-scrollbar-thumb:hover {
-            background: #555;
+            background: #777777;
         }
 
     </style>
