@@ -49,7 +49,7 @@ def leave_roster_calendar():
             "color": "#ffd700" if leave.get('status') == "Pending" else "#00cc00"
         })
 
-    today = datetime.datetime.today()
+    today = datetime.today()
     start_of_week = today - timedelta(days=today.weekday())  # Monday
 
     # Add recurring weekly task: visiting channel partners
