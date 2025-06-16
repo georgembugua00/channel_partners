@@ -63,7 +63,7 @@ if "chat_chain" not in st.session_state:
     {chat_history}
     Human: {input}
     Assistant:"""
-    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
+    prompt = PromptTemplate(input_variables=["history", "input"], template=template)
     st.session_state.chat_chain = ConversationChain(
         llm=llm,
         memory=st.session_state.memory,
