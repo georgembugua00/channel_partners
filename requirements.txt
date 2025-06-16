@@ -10,4 +10,5 @@ transformers==4.39.3
 torch
 sentence-transformers==2.7.0
 langchain
-langchain-community==0.0.37
+langchain_ollama
+langchain-community
