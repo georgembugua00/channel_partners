@@ -2,9 +2,7 @@ streamlit
 pandas
 requests
 plotly
-ollama
 dotenv
-langchain_ollama
 faiss-cpu
 streamlit_calendar
 PyPDF2
