@@ -16,8 +16,6 @@ import json
 import pandas as pd
 import re
 import datetime
-import base64
-from ollama import Client
 import os
 # --- Initialize LLM + Embeddings ---
 
@@ -36,13 +34,6 @@ def load_ollama_models():
 
 # ✅ Make sure to call it BEFORE using `llm`
 llm, minicpm, embedder = load_ollama_models()
-
-# ✅ Now safely use `llm`
-st.session_state.chat_chain = ConversationChain(
-    llm=llm,
-    memory=st.session_state.memory,
-    prompt=prompt
-)
 
 
 # --- Custom CSS for UI styling ---
@@ -222,77 +213,6 @@ def is_shop_query(user_input):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in user_input.lower() for k in keywords)
 
-# --- OCR/Visual Reasoning with MiniCPM (using ollama_client) ---
-def analyze_image_with_minicpm(image_bytes, user_additional_prompt=""):
-    """
-    Sends an image and a text prompt to the Ollama minicpm-v:8b model for analysis.
-    Returns a textual summary of the image.
-    """
-    try:
-        # Encode image to base64
-        buffered = io.BytesIO(image_bytes)
-        img = Image.open(buffered)
-        # Convert to PNG for consistent base64 encoding if original is not PNG
-        img_byte_arr = io.BytesIO()
-        img.save(img_byte_arr, format="PNG")
-        base64_image = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
-
-        # Define the prompt for the vision model
-        vision_prompt = (
-            f"As an AI assistant for Airtel Sales and Distribution, analyze this image. "
-            f"If it shows damaged equipment, classify the damage (e.g., Minor dent, Severe crack, Missing part, Liquid damage, etc.) "
-            f"and provide actionable advice for an Airtel sales executive on what steps to take. "
-            f"If it's a screenshot of a system/transaction, identify any errors, statuses, or key information. "
-            f"Provide a concise 'Classification:' and 'Advice/Summary:'. "
-            f"Prioritize errors or key information. \n\n"
-            f"User provided context: {user_additional_prompt}" if user_additional_prompt else ""
-        )
-
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": vision_prompt},
-                    {"type": "image", "image": base64_image}
-                ]
-            }
-        ]
-        
-        st.info(f"Sending image to Ollama ({OLLAMA_VISION_MODEL}) for analysis...")
-        response_stream = ollama_client.chat(model=OLLAMA_VISION_MODEL, messages=messages, stream=True)
-        
-        full_response_content = ""
-        for chunk in response_stream:
-            full_response_content += chunk['message']['content']
-            # Optional: st.write(full_response_content) # For real-time streaming to UI, if desired
-
-        # Simple parsing of the generated text
-        classification = "N/A"
-        advice_summary = "N/A"
-
-        if "Classification:" in full_response_content and "Advice/Summary:" in full_response_content:
-            try:
-                class_start = full_response_content.find("Classification:") + len("Classification:")
-                advice_start = full_response_content.find("Advice/Summary:")
-                
-                classification = full_response_content[class_start:advice_start].strip()
-                advice_summary = full_response_content[advice_start + len("Advice/Summary:"):].strip()
-                
-                return f"Image Analysis (Classification: {classification}): {advice_summary}"
-            except Exception as e:
-                st.warning(f"Could not parse AI vision response. Displaying raw output. Error: {e}")
-                return f"Raw Vision AI Output: {full_response_content}"
-        else:
-            st.warning("AI vision response did not contain expected 'Classification:' and 'Advice/Summary:' format. Displaying raw output.")
-            return f"Raw Vision AI Output: {full_response_content}"
-
-    except httpx.ConnectError:
-        st.error(f"Image Analysis Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
-                 "Please ensure Ollama is running and accessible.")
-        return "Error: Ollama server connection failed for image analysis."
-    except Exception as e:
-        st.error(f"An error occurred during image analysis: {e}")
-        return f"Error analyzing image: {e}"
 
 
 # --- New LLM session state variables ---
@@ -391,16 +311,6 @@ def handle_user_input(user_input):
             st.rerun()
 
 
-def handle_image_input(uploaded_image):
-    """Processes the uploaded image and returns a textual summary from the vision model."""
-    if uploaded_image is not None:
-        image_bytes = uploaded_image.getvalue()
-        # Optionally, allow user to add a prompt to the image analysis
-        # For simplicity now, we just pass an empty string
-        analysis_result = analyze_image_with_minicpm(image_bytes, user_additional_prompt="")
-        return analysis_result
-    return None
-
 # --- AI Chatbot ---
 def chatbot():
     st.header("🤖 Airtel AI Assistant - Lulu")
@@ -448,13 +358,10 @@ def chatbot():
 
     current_input = None
 
+    user_text_input = st.chat_input("Ask Lulu a question...")
+    
     if user_text_input:
-        current_input = user_text_input
-    elif uploaded_image:
-        current_input = handle_image_input(uploaded_image)
-
-    if current_input: # Only call handle_user_input if there's valid input
-        handle_user_input(current_input)
+        handle_user_input(user_text_input)
 
     st.markdown("<br>", unsafe_allow_html=True) # Add some space
     if st.button("📄 Export Chat as JSON"):
