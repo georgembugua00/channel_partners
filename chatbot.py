@@ -1,58 +1,49 @@
 import streamlit as st
-from langchain.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
-from langchain.chains import ConversationalRetrievalChain
+from langchain_ollama import ChatOllama
+from langchain.vectorstores import FAISS # Keep if using RAG later, otherwise can remove
+from langchain.embeddings import OllamaEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter # Keep if using RAG later
+from langchain.docstore.document import Document # Keep if using RAG later
+from langchain.chains import ConversationalRetrievalChain # Keep if using RAG later
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import SystemMessage
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader # Keep if using PDF processing later
 import json
 import pandas as pd
 import re
 import datetime
 import base64
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from sentence_transformers import SentenceTransformer
-# --- Initialize LLM + Embeddings ---
-import streamlit as st
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-from sentence_transformers import SentenceTransformer
+from ollama import Client # Directly import the Ollama client for advanced interactions
+import io # For handling image bytes
 
+# --- Ollama Configuration ---
+# Ensure your Ollama server is running at this URL.
+# If running on Docker or a different machine, adjust the host accordingly.
+OLLAMA_HOST_URL = "http://localhost:11434"
+OLLAMA_TEXT_MODEL = "llama3.2" # Text model for general conversation
+OLLAMA_VISION_MODEL = "minicpm-v:8b" # Vision model for image analysis
+OLLAMA_EMBED_MODEL = "nomic-embed-text" # Embedding model for vector store
+
+# --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    # Load tokenizer and model from Hugging Face
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-32B")
-    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-32B")
+    # Initialize Ollama client for general text conversations
+    qwen_llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
 
-    # Wrap in pipeline
-    llm = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        device_map="auto",
-        max_length=512,
-        do_sample=True,
-        temperature=0.4
-    )
+    # Initialize Ollama client for direct API access, especially for vision model
+    ollama_client = Client(host=OLLAMA_HOST_URL)
 
-    # Sentence embedding model
-    embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    # Initialize Ollama embeddings
+    embedder = OllamaEmbeddings(model=OLLAMA_EMBED_MODEL, base_url=OLLAMA_HOST_URL)
 
-    # Optional: vision model placeholder
-    minicpm = None
+    return qwen_llm, ollama_client, embedder
 
-    return llm, minicpm, embedder
+# Load models and clients on app startup
+llm, ollama_client, embedder = load_ollama_models()
 
-# Use it like this:
-llm, minicpm, embedder = load_ollama_models()
-
-
-
-
-
-# Custom CSS for UI styling
+# --- Custom CSS for UI styling ---
 def inject_custom_css():
     st.html("""
     <style>
@@ -123,7 +114,6 @@ def inject_custom_css():
             align-self: flex-start; /* Align timestamp to the left within the bot message bubble */
         }
 
-
         /* Quick actions styling */
         .stButton>button {
             background-color: #FF4B4B; /* Red buttons */
@@ -190,6 +180,7 @@ def inject_custom_css():
     </script>
     """)
 
+# --- Helper functions for parsing and data loading ---
 def parse_thoughts(response_text):
     # Extract text inside <think>...</think>
     match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
@@ -199,10 +190,13 @@ def parse_thoughts(response_text):
         return thought, cleaned_response
     return None, response_text
 
-
-# Load shop data from JSON file
-with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
-    SHOP_LOCATIONS = json.load(f)
+# Load shop data from JSON file (ensure this path is correct on your system)
+try:
+    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
+        SHOP_LOCATIONS = json.load(f)
+except FileNotFoundError:
+    st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
+    SHOP_LOCATIONS = {} # Initialize as empty to prevent further errors
 
 def find_shop_by_keyword(query):
     for shop_name, shop_data in SHOP_LOCATIONS.items():
@@ -213,7 +207,7 @@ def find_shop_by_keyword(query):
 def format_shop_info(shop_data):
     name = shop_data.get("SHOP NAME", "N/A")
     location = shop_data.get("PHYSICAL LOCATION", "N/A")
-    plus_code = shop_data.get("Plus Code", "")
+    # plus_code = shop_data.get("Plus Code", "") # Not used in output
     lat = shop_data.get("Latitude")
     lon = shop_data.get("Longitude")
     # Corrected Google Maps link format
@@ -224,16 +218,79 @@ def is_shop_query(user_input):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in user_input.lower() for k in keywords)
 
-# --- OCR/Visual Reasoning with MiniCPM ---
-def analyze_image_with_minicpm(image_bytes):
-    b64_image = base64.b64encode(image_bytes).decode('utf-8')
-    response = minicpm(
-        messages=[
-            {"role": "user", "content": "What is this image showing? Extract any transaction or system error, and provide a concise summary. Prioritize errors or key information."},
-            {"role": "user", "content": {"type": "image", "image": b64_image}}
+# --- OCR/Visual Reasoning with MiniCPM (using ollama_client) ---
+def analyze_image_with_minicpm(image_bytes, user_additional_prompt=""):
+    """
+    Sends an image and a text prompt to the Ollama minicpm-v:8b model for analysis.
+    Returns a textual summary of the image.
+    """
+    try:
+        # Encode image to base64
+        buffered = io.BytesIO(image_bytes)
+        img = Image.open(buffered)
+        # Convert to PNG for consistent base64 encoding if original is not PNG
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format="PNG")
+        base64_image = base64.b64encode(img_byte_arr.getvalue()).decode('utf-8')
+
+        # Define the prompt for the vision model
+        vision_prompt = (
+            f"As an AI assistant for Airtel Sales and Distribution, analyze this image. "
+            f"If it shows damaged equipment, classify the damage (e.g., Minor dent, Severe crack, Missing part, Liquid damage, etc.) "
+            f"and provide actionable advice for an Airtel sales executive on what steps to take. "
+            f"If it's a screenshot of a system/transaction, identify any errors, statuses, or key information. "
+            f"Provide a concise 'Classification:' and 'Advice/Summary:'. "
+            f"Prioritize errors or key information. \n\n"
+            f"User provided context: {user_additional_prompt}" if user_additional_prompt else ""
+        )
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": vision_prompt},
+                    {"type": "image", "image": base64_image}
+                ]
+            }
         ]
-    )
-    return response.get("content", "Unable to extract info from image.") # Access content directly
+        
+        st.info(f"Sending image to Ollama ({OLLAMA_VISION_MODEL}) for analysis...")
+        response_stream = ollama_client.chat(model=OLLAMA_VISION_MODEL, messages=messages, stream=True)
+        
+        full_response_content = ""
+        for chunk in response_stream:
+            full_response_content += chunk['message']['content']
+            # Optional: st.write(full_response_content) # For real-time streaming to UI, if desired
+
+        # Simple parsing of the generated text
+        classification = "N/A"
+        advice_summary = "N/A"
+
+        if "Classification:" in full_response_content and "Advice/Summary:" in full_response_content:
+            try:
+                class_start = full_response_content.find("Classification:") + len("Classification:")
+                advice_start = full_response_content.find("Advice/Summary:")
+                
+                classification = full_response_content[class_start:advice_start].strip()
+                advice_summary = full_response_content[advice_start + len("Advice/Summary:"):].strip()
+                
+                return f"Image Analysis (Classification: {classification}): {advice_summary}"
+            except Exception as e:
+                st.warning(f"Could not parse AI vision response. Displaying raw output. Error: {e}")
+                return f"Raw Vision AI Output: {full_response_content}"
+        else:
+            st.warning("AI vision response did not contain expected 'Classification:' and 'Advice/Summary:' format. Displaying raw output.")
+            return f"Raw Vision AI Output: {full_response_content}"
+
+    except requests.exceptions.ConnectionError:
+        st.error(f"Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
+                 "Please ensure Ollama is running and the model '{OLLAMA_VISION_MODEL}' is pulled.")
+        st.markdown("Run `ollama serve` in your terminal and `ollama pull minicpm-v:8b`.")
+        return "Error: Ollama server connection failed for image analysis."
+    except Exception as e:
+        st.error(f"An error occurred during image analysis: {e}")
+        return f"Error analyzing image: {e}"
+
 
 # --- New LLM session state variables ---
 if "vector_store" not in st.session_state:
@@ -252,7 +309,7 @@ if "chat_chain" not in st.session_state:
     Assistant:"""
     prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
     st.session_state.chat_chain = ConversationChain(
-        llm=llm,
+        llm=llm, # This is the ChatOllama instance
         memory=st.session_state.memory,
         prompt=prompt
     )
@@ -269,22 +326,13 @@ def handle_user_input(user_input):
 
     with st.spinner("Lulu is thinking..."):
         # Determine which input key to use based on chain type
-        if st.session_state.vector_store:
-            # Using ConversationalRetrievalChain - requires "question" key
-            inputs = {"question": user_input}
-        else:
-            # Using ConversationChain - requires "input" key
-            inputs = {"input": user_input}
+        # For ConversationChain, it always expects 'input'
+        inputs = {"input": user_input}
 
         result = st.session_state.chat_chain.invoke(inputs)
 
-        # Handle both output types gracefully
-        if 'answer' in result:
-            response = result['answer']
-        elif 'response' in result:
-            response = result['response']
-        else:
-            response = str(result)  # fallback
+        # Handle both output types gracefully (ChatOllama usually returns AIMessage which has .content)
+        response = result.content if hasattr(result, 'content') else str(result)
 
         # Parse thoughts if any
         thought, cleaned_response = parse_thoughts(response)
@@ -320,6 +368,15 @@ def handle_user_input(user_input):
         # Rerun to update chat display
         st.rerun()
 
+def handle_image_input(uploaded_image):
+    """Processes the uploaded image and returns a textual summary from the vision model."""
+    if uploaded_image is not None:
+        image_bytes = uploaded_image.getvalue()
+        # Optionally, allow user to add a prompt to the image analysis
+        # For simplicity now, we just pass an empty string
+        analysis_result = analyze_image_with_minicpm(image_bytes, user_additional_prompt="")
+        return analysis_result
+    return None
 
 # --- AI Chatbot ---
 def chatbot():
@@ -376,11 +433,11 @@ def chatbot():
     if current_input: # Only call handle_user_input if there's valid input
         handle_user_input(current_input)
 
-
     st.markdown("<br>", unsafe_allow_html=True) # Add some space
     if st.button("📄 Export Chat as JSON"):
         with open("chat_history.json", "w") as f:
             json.dump(st.session_state.chat_messages, f, indent=2)
         st.success("Chat history exported to chat_history.json ✅")
 
+# Run the chatbot application
 chatbot()
