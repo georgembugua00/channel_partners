@@ -51,7 +51,6 @@ def leave_roster_calendar():
             "color": "#ffd700" if leave.get('status') == "Pending" else "#00cc00"
         })
 
-    # Generate this week's Monday
     today = datetime.today()
     start_of_week = today - timedelta(days=today.weekday())  # Monday
 
