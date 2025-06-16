@@ -10,6 +10,8 @@ from langchain_core.messages import SystemMessage
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
 from PyPDF2 import PdfReader
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from sentence_transformers import SentenceTransformer
 import json
 import pandas as pd
 import re
@@ -22,13 +24,8 @@ USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() == "true"
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-    from sentence_transformers import SentenceTransformer
-
-
     tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen1.5-7B-Chat")
     model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen1.5-7B-Chat")
-
 
     llm = pipeline(
         "text-generation",
