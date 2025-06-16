@@ -17,15 +17,34 @@ import datetime
 import base64
 from ollama import Client
 
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+from sentence_transformers import SentenceTransformer
+import streamlit as st
+
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    qwen_llm = ChatOllama(model="llama3.2", temperature=0.4)
-    minicpm_llm = Client().chat(model='minicpm-v:8b')  # Vision-capable API access
-    embedder = OllamaEmbeddings(model="nomic-embed-text")
-    return qwen_llm, minicpm_llm, embedder
+    # Load a Hugging Face LLM pipeline
+    llm = pipeline(
+        "text-generation",
+        model="mistralai/Mistral-7B-Instruct-v0.1",
+        tokenizer="mistralai/Mistral-7B-Instruct-v0.1",
+        device_map="auto",
+        max_length=512,
+        do_sample=True,
+        temperature=0.4
+    )
+
+    # Optional: You can add a placeholder or load a vision model separately
+    minicpm_llm = None
+
+    # Hugging Face embedding model
+    embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+    return llm, minicpm_llm, embedder
 
 llm, minicpm, embedder = load_ollama_models()
+
 
 # Custom CSS for UI styling
 def inject_custom_css():
