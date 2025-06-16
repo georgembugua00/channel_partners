@@ -25,8 +25,10 @@ def load_ollama_models():
     from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
     from sentence_transformers import SentenceTransformer
 
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-32B")
-    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-32B")
+
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen1.5-7B-Chat")
+    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen1.5-7B-Chat")
+
 
     llm = pipeline(
         "text-generation",
