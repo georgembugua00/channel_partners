@@ -1,90 +1,31 @@
 import streamlit as st
 from langchain_ollama import ChatOllama
-from langchain.vectorstores import FAISS # Keep if using RAG later, otherwise can remove
+from langchain.vectorstores import FAISS
 from langchain.embeddings import OllamaEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter # Keep if using RAG later
-from langchain.docstore.document import Document # Keep if using RAG later
-from langchain.chains import ConversationalRetrievalChain # Keep if using RAG later
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
+from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import SystemMessage
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
-from PyPDF2 import PdfReader # Keep if using PDF processing later
+from PyPDF2 import PdfReader
 import json
 import pandas as pd
 import re
 import datetime
 import base64
-from ollama import Client # Directly import the Ollama client for advanced interactions
-import io # For handling image bytes
-import httpx # Import httpx for specific error handling
-
-# --- Ollama Configuration ---
-# Ensure your Ollama server is running at this URL.
-# If running on Docker or a different machine, adjust the host accordingly.
-OLLAMA_HOST_URL = "http://localhost:11434"
-OLLAMA_TEXT_MODEL = "llama3.2" # Text model for general conversation
-OLLAMA_VISION_MODEL = "minicpm-v:8b" # Vision model for image analysis
-OLLAMA_EMBED_MODEL = "nomic-embed-text" # Embedding model for vector store
+from ollama import Client
 
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    qwen_llm = "llama4:16x17b"
-    ollama_client = None
-    embedder = "nomic-embed-text"
-    try:
-        # Initialize Ollama client for general text conversations
-        qwen_llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
+    qwen_llm = ChatOllama(model="llama3.2", temperature=0.4)
+    minicpm_llm = Client().chat(model='minicpm-v:8b')  # Vision-capable API access
+    embedder = OllamaEmbeddings(model="nomic-embed-text")
+    return qwen_llm, minicpm_llm, embedder
 
-        # Attempt a simple call to verify connection for qwen_llm
-        # This is a hacky way to check, a better way would be a direct ping if available
-        # For now, let's rely on the Client() initialisation to surface connection issues
-        
-        # Initialize Ollama client for direct API access, especially for vision model
-        ollama_client = Client(host=OLLAMA_HOST_URL)
-        
-        # Attempt to list models to confirm connection and model availability
-        try:
-            ollama_client.list() # This will raise an exception if server is not reachable
-            st.success("Successfully connected to Ollama server.")
-        except httpx.ConnectError:
-            st.error(f"Failed to connect to Ollama server at {OLLAMA_HOST_URL}. Please ensure Ollama is running.")
-            st.stop() # Stop the app if no connection
-        except Exception as e:
-            st.error(f"An error occurred while listing Ollama models: {e}. Please check your Ollama setup.")
-            st.stop()
-
-
-        # Initialize Ollama embeddings
-        embedder = OllamaEmbeddings(model=OLLAMA_EMBED_MODEL, base_url=OLLAMA_HOST_URL)
-        
-        # Verify the presence of required models
-        models_info = ollama_client.list()
-        available_models = [m['name'] for m in models_info.get('models', [])]
-
-        if OLLAMA_TEXT_MODEL not in available_models:
-            st.error(f"Ollama text model '{OLLAMA_TEXT_MODEL}' not found. Please run `ollama pull {OLLAMA_TEXT_MODEL}`.")
-            st.stop()
-        if OLLAMA_VISION_MODEL not in available_models:
-            st.error(f"Ollama vision model '{OLLAMA_VISION_MODEL}' not found. Please run `ollama pull {OLLAMA_VISION_MODEL}`.")
-            st.stop()
-        if OLLAMA_EMBED_MODEL not in available_models:
-            st.error(f"Ollama embedding model '{OLLAMA_EMBED_MODEL}' not found. Please run `ollama pull {OLLAMA_EMBED_MODEL}`.")
-            st.stop()
-
-    except httpx.ConnectError:
-        st.error(f"Critical Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
-                 "Please ensure Ollama is running by executing `ollama serve` in your terminal.")
-        st.stop() # Stop execution if the server is unreachable
-    except Exception as e:
-        st.error(f"An unexpected error occurred during Ollama model loading: {e}")
-        st.stop() # Stop execution for other critical errors
-
-    return qwen_llm, ollama_client, embedder
-
-# Load models and clients on app startup
-llm, ollama_client, embedder = load_ollama_models()
+llm, minicpm, embedder = load_ollama_models()
 
 # --- Custom CSS for UI styling ---
 def inject_custom_css():
@@ -237,7 +178,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
+    with open("shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
