@@ -29,7 +29,7 @@ def load_ollama_models():
     llm = ChatOllama(model='llama3')
     
     if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(return_messages=True)
+        st.session_state.memory = ConversationBufferMemory(return_messages=True)
     
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     return llm, None, embedder
