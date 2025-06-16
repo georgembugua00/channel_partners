@@ -13,31 +13,43 @@ import pandas as pd
 import re
 import datetime
 import base64
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
 # --- Initialize LLM + Embeddings ---
+import streamlit as st
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from sentence_transformers import SentenceTransformer
+
 @st.cache_resource
 def load_ollama_models():
-    # Load a Hugging Face LLM pipeline
+    # Load tokenizer and model from Hugging Face
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-32B")
+    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-32B")
+
+    # Wrap in pipeline
     llm = pipeline(
         "text-generation",
-        model="Qwen/Qwen3-32B",
-        tokenizer="Qwen/Qwen3-32B"
+        model=model,
+        tokenizer=tokenizer,
         device_map="auto",
         max_length=512,
         do_sample=True,
         temperature=0.4
     )
 
-    # Optional: You can add a placeholder or load a vision model separately
-    minicpm_llm = None
-
-    # Hugging Face embedding model
+    # Sentence embedding model
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-    return llm, minicpm_llm, embedder
+    # Optional: vision model placeholder
+    minicpm = None
 
+    return llm, minicpm, embedder
+
+# Use it like this:
 llm, minicpm, embedder = load_ollama_models()
+
+
+
 
 
 # Custom CSS for UI styling
