@@ -13,11 +13,8 @@ import pandas as pd
 import re
 import datetime
 import base64
-
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer
-import streamlit as st
-
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
