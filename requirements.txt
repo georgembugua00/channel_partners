@@ -7,3 +7,4 @@ dotenv
 langchain
 langchain_ollama
 faiss-cpu
+streamlit_calendar
