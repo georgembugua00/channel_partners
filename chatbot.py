@@ -16,16 +16,37 @@ import re
 import datetime
 import base64
 from ollama import Client
+import os
 
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() == "true"
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    qwen_llm = ChatOllama(model="llama3.2", temperature=0.4)
-    minicpm_llm = Client().chat(model='minicpm-v:8b')  # Vision-capable API access
-    embedder = OllamaEmbeddings(model="nomic-embed-text")
-    return qwen_llm, minicpm_llm, embedder
+    if USE_OLLAMA:
+        from ollama import Client
+        minicpm_llm = Client().chat(model='minicpm-v:8b')
+    else:
+        minicpm_llm = None
 
-llm, minicpm, embedder = load_ollama_models()
+    from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+    from sentence_transformers import SentenceTransformer
+
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-32B")
+    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3-32B")
+
+    llm = pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        device_map="auto",
+        max_length=512,
+        do_sample=True,
+        temperature=0.4
+    )
+
+    embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+
+    return llm, minicpm_llm, embedder
 
 # --- Custom CSS for UI styling ---
 def inject_custom_css():
