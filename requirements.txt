@@ -10,3 +10,6 @@ faiss-cpu
 streamlit_calendar
 langchain_community
 PyPDF2
+transformers
+torch
+sentence-transformers
