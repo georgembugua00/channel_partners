@@ -5,3 +5,4 @@ plotly
 ollama
 dotenv
 langchain
+langchain_ollama
