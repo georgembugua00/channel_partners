@@ -1,5 +1,5 @@
 import streamlit as st
-from sales_exec.user_data import  USERS
+from user_data import  USERS
 
 if 'user' not in st.session_state:
     st.session_state.user = None
