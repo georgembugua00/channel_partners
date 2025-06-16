@@ -17,6 +17,7 @@ import datetime
 import base64
 from ollama import Client # Directly import the Ollama client for advanced interactions
 import io # For handling image bytes
+import httpx # Import httpx for specific error handling
 
 # --- Ollama Configuration ---
 # Ensure your Ollama server is running at this URL.
@@ -29,14 +30,56 @@ OLLAMA_EMBED_MODEL = "nomic-embed-text" # Embedding model for vector store
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    # Initialize Ollama client for general text conversations
-    qwen_llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
+    qwen_llm = None
+    ollama_client = None
+    embedder = None
+    try:
+        # Initialize Ollama client for general text conversations
+        qwen_llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
 
-    # Initialize Ollama client for direct API access, especially for vision model
-    ollama_client = Client(host=OLLAMA_HOST_URL)
+        # Attempt a simple call to verify connection for qwen_llm
+        # This is a hacky way to check, a better way would be a direct ping if available
+        # For now, let's rely on the Client() initialisation to surface connection issues
+        
+        # Initialize Ollama client for direct API access, especially for vision model
+        ollama_client = Client(host=OLLAMA_HOST_URL)
+        
+        # Attempt to list models to confirm connection and model availability
+        try:
+            ollama_client.list() # This will raise an exception if server is not reachable
+            st.success("Successfully connected to Ollama server.")
+        except httpx.ConnectError:
+            st.error(f"Failed to connect to Ollama server at {OLLAMA_HOST_URL}. Please ensure Ollama is running.")
+            st.stop() # Stop the app if no connection
+        except Exception as e:
+            st.error(f"An error occurred while listing Ollama models: {e}. Please check your Ollama setup.")
+            st.stop()
 
-    # Initialize Ollama embeddings
-    embedder = OllamaEmbeddings(model=OLLAMA_EMBED_MODEL, base_url=OLLAMA_HOST_URL)
+
+        # Initialize Ollama embeddings
+        embedder = OllamaEmbeddings(model=OLLAMA_EMBED_MODEL, base_url=OLLAMA_HOST_URL)
+        
+        # Verify the presence of required models
+        models_info = ollama_client.list()
+        available_models = [m['name'] for m in models_info.get('models', [])]
+
+        if OLLAMA_TEXT_MODEL not in available_models:
+            st.error(f"Ollama text model '{OLLAMA_TEXT_MODEL}' not found. Please run `ollama pull {OLLAMA_TEXT_MODEL}`.")
+            st.stop()
+        if OLLAMA_VISION_MODEL not in available_models:
+            st.error(f"Ollama vision model '{OLLAMA_VISION_MODEL}' not found. Please run `ollama pull {OLLAMA_VISION_MODEL}`.")
+            st.stop()
+        if OLLAMA_EMBED_MODEL not in available_models:
+            st.error(f"Ollama embedding model '{OLLAMA_EMBED_MODEL}' not found. Please run `ollama pull {OLLAMA_EMBED_MODEL}`.")
+            st.stop()
+
+    except httpx.ConnectError:
+        st.error(f"Critical Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
+                 "Please ensure Ollama is running by executing `ollama serve` in your terminal.")
+        st.stop() # Stop execution if the server is unreachable
+    except Exception as e:
+        st.error(f"An unexpected error occurred during Ollama model loading: {e}")
+        st.stop() # Stop execution for other critical errors
 
     return qwen_llm, ollama_client, embedder
 
@@ -192,7 +235,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("shop_location.json", "r") as f:
+    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
@@ -282,10 +325,9 @@ def analyze_image_with_minicpm(image_bytes, user_additional_prompt=""):
             st.warning("AI vision response did not contain expected 'Classification:' and 'Advice/Summary:' format. Displaying raw output.")
             return f"Raw Vision AI Output: {full_response_content}"
 
-    except requests.exceptions.ConnectionError:
-        st.error(f"Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
-                 "Please ensure Ollama is running and the model '{OLLAMA_VISION_MODEL}' is pulled.")
-        st.markdown("Run `ollama serve` in your terminal and `ollama pull minicpm-v:8b`.")
+    except httpx.ConnectError:
+        st.error(f"Image Analysis Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
+                 "Please ensure Ollama is running and accessible.")
         return "Error: Ollama server connection failed for image analysis."
     except Exception as e:
         st.error(f"An error occurred during image analysis: {e}")
@@ -329,44 +371,64 @@ def handle_user_input(user_input):
         # For ConversationChain, it always expects 'input'
         inputs = {"input": user_input}
 
-        result = st.session_state.chat_chain.invoke(inputs)
+        try:
+            result = st.session_state.chat_chain.invoke(inputs)
 
-        # Handle both output types gracefully (ChatOllama usually returns AIMessage which has .content)
-        response = result.content if hasattr(result, 'content') else str(result)
+            # Handle both output types gracefully (ChatOllama usually returns AIMessage which has .content)
+            response = result.content if hasattr(result, 'content') else str(result)
 
-        # Parse thoughts if any
-        thought, cleaned_response = parse_thoughts(response)
-        if thought:
-            with st.expander("🤖 Internal reasoning"):
-                st.markdown(thought)
-            response = cleaned_response
+            # Parse thoughts if any
+            thought, cleaned_response = parse_thoughts(response)
+            if thought:
+                with st.expander("🤖 Internal reasoning"):
+                    st.markdown(thought)
+                response = cleaned_response
 
-        # Add bot message to history
-        st.session_state.chat_messages.append({
-            "role": "bot",
-            "content": response,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
+            # Add bot message to history
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": response,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
 
-        # Special handling for shop queries after LLM response
-        if is_shop_query(user_input):
-            shop_data = find_shop_by_keyword(user_input)
-            if shop_data:
-                shop_info = format_shop_info(shop_data)
-                # Add shop info as a separate bot message for clear display
-                st.session_state.chat_messages.append({
-                    "role": "bot",
-                    "content": f"Here's the information for the shop you requested:\n\n{shop_info}",
-                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-            else:
-                st.session_state.chat_messages.append({
-                    "role": "bot",
-                    "content": "Sorry, I couldn’t find a matching shop. Please try specifying the town or shop name more clearly.",
-                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-        # Rerun to update chat display
-        st.rerun()
+            # Special handling for shop queries after LLM response
+            if is_shop_query(user_input):
+                shop_data = find_shop_by_keyword(user_input)
+                if shop_data:
+                    shop_info = format_shop_info(shop_data)
+                    # Add shop info as a separate bot message for clear display
+                    st.session_state.chat_messages.append({
+                        "role": "bot",
+                        "content": f"Here's the information for the shop you requested:\n\n{shop_info}",
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                else:
+                    st.session_state.chat_messages.append({
+                        "role": "bot",
+                        "content": "Sorry, I couldn’t find a matching shop. Please try specifying the town or shop name more clearly.",
+                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+            # Rerun to update chat display
+            st.rerun()
+
+        except httpx.ConnectError:
+            st.error(f"Chatbot Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
+                     "Please ensure Ollama is running and accessible. Re-run the app once Ollama is active.")
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": "I'm unable to connect to the AI model right now. Please ensure Ollama is running and try again.",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.rerun()
+        except Exception as e:
+            st.error(f"An unexpected error occurred during chatbot interaction: {e}")
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": "An error occurred while processing your request. Please try again or rephrase your question.",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.rerun()
+
 
 def handle_image_input(uploaded_image):
     """Processes the uploaded image and returns a textual summary from the vision model."""
