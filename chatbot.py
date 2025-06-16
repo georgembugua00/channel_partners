@@ -22,7 +22,7 @@ import os
 # --- Initialize LLM + Embeddings ---
 @st.cache_resource
 def load_ollama_models():
-    model_name = "mistralai/Mistral-7B-Instruct-v0.2"
+    model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
