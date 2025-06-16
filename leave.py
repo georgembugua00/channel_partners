@@ -51,7 +51,7 @@ def leave_roster_calendar():
         })
 
     # Generate this week's Monday
-    today = datetime.datetime.today()
+    today = datetime.today()
     start_of_week = today - timedelta(days=today.weekday())  # Monday
 
     # Add recurring weekly task: visiting channel partners
