@@ -52,6 +52,53 @@ def is_shop_query(text):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in text.lower() for k in keywords)
 
+def inject_custom_css():
+    st.html("""
+    <style>
+        .profile-card {
+            background-color: red;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(255, 255, 255, 0.1);
+        }
+        .chat-message {
+            border-radius: 12px;
+            padding: 10px 15px;
+            margin: 10px 0;
+            max-width: 75%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #e0e0e0;
+            color: black;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .bot-message {
+            background-color: #f44336;
+            color: white;
+            align-self: flex-start;
+            margin-right: auto;
+        }
+        .timestamp {
+            font-size: 0.75em;
+            color: #999;
+            text-align: right;
+            margin-top: 4px;
+        }
+        .chat-box {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+    <script>
+        const chatContainer = window.parent.document.querySelector('.main');
+        if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
+    </script>
+    """)
+
 # --- Thought Extraction ---
 def parse_thoughts(response_text):
     match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
