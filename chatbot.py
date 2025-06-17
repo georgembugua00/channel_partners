@@ -1,40 +1,68 @@
 import streamlit as st
-from langchain_ollama import ChatOllama
-from langchain_community.vectorstores import FAISS # Keep if using RAG later, otherwise can remove
-from langchain_community.embeddings import OllamaEmbeddings # Updated import to langchain_community
-from langchain.text_splitter import RecursiveCharacterTextSplitter # Keep if using RAG later, otherwise can remove
-from langchain.docstore.document import Document # Keep if using RAG later
-from langchain.chains import ConversationalRetrievalChain # Keep if using RAG later
+from langchain_community.vectorstores import FAISS # Updated import
+from langchain_community.embeddings import HuggingFaceEmbeddings # Using HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
+from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import SystemMessage
 from langchain.chains import ConversationChain
 from langchain.prompts import PromptTemplate
-from PyPDF2 import PdfReader # Keep if using PDF processing later
+from PyPDF2 import PdfReader
 import json
 import pandas as pd
 import re
 import datetime
-import httpx # Still needed for error handling within handle_user_input, but not for init_llm_and_memory
-# Removed: from ollama import Client # No longer needed for model loading or checks
+# Removed: import base64, import io, import httpx, from ollama import Client
+
+# Hugging Face imports
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
+from sentence_transformers import SentenceTransformer # Direct import for embeddings
+
 
 # --- Model & Memory Setup ---
 @st.cache_resource
 def init_llm_and_memory():
-    # Define models to be used (ChatOllama and OllamaEmbeddings will default to localhost:11434)
-    TEXT_MODEL = "llama3.2"
-    EMBED_MODEL = "nomic-embed-text"
+    # Define Hugging Face models to be used
+    # Choosing a relatively small model like 'distilgpt2' for text generation
+    # for better compatibility with Streamlit Cloud's free tier.
+    TEXT_MODEL_HF = "distilgpt2"
+    EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2" # Efficient embedding model
 
-    # Initialize Ollama LLM for general text conversations
-    llm = ChatOllama(model=TEXT_MODEL, temperature=0.4)
+    llm = None
+    embedder = None
+    try:
+        # Load tokenizer and model from Hugging Face
+        st.info(f"Loading text model: {TEXT_MODEL_HF} from Hugging Face...")
+        tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_HF)
+        model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_HF)
 
-    # Initialize Ollama embeddings
-    embedder = OllamaEmbeddings(model=EMBED_MODEL)
-    
-    # Removed: All server connection and model availability checks for simplicity
-    # The application will now directly attempt to use the models.
-    # Connection errors will be caught in handle_user_input.
+        # Create a Hugging Face pipeline
+        hf_pipeline = pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tokenizer,
+            max_new_tokens=200, # Limit output length to prevent very long responses
+            do_sample=True,
+            temperature=0.7,
+            pad_token_id=tokenizer.eos_token_id # Important for generation
+        )
+        # Wrap the Hugging Face pipeline with LangChain's HuggingFacePipeline
+        llm = HuggingFacePipeline(pipeline=hf_pipeline)
+        st.success(f"Text model {TEXT_MODEL_HF} loaded successfully.")
 
-    return llm, embedder # Return only llm and embedder
+        # Initialize Hugging Face embeddings
+        st.info(f"Loading embedding model: {EMBED_MODEL_HF} from Hugging Face...")
+        embedder = HuggingFaceEmbeddings(model_name=EMBED_MODEL_HF)
+        st.success(f"Embedding model {EMBED_MODEL_HF} loaded successfully.")
+        
+    except Exception as e:
+        st.error(f"An error occurred during Hugging Face model loading: {e}")
+        st.info("Please check if the model names are correct and if you have sufficient memory/resources.")
+        st.stop() # Stop execution if models cannot be loaded
+
+    return llm, embedder
 
 # Use the new function name
 llm, embedder = init_llm_and_memory()
@@ -217,9 +245,6 @@ def is_shop_query(user_input):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in user_input.lower() for k in keywords)
 
-# --- REMOVED: OCR/Visual Reasoning with MiniCPM function ---
-# The analyze_image_with_minicpm function is removed as vision model logic is no longer used.
-
 # --- New LLM session state variables (moved to global scope) ---
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = None
@@ -237,10 +262,10 @@ if "chat_chain" not in st.session_state:
     Assistant:"""
     prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
     st.session_state.chat_chain = ConversationChain(
-        llm=llm, # This is the ChatOllama instance
+        llm=llm, # This is the HuggingFacePipeline instance
         memory=st.session_state.memory,
         prompt=prompt,
-        # REMOVED: memory_key="chat_history" as it's now inferred and causes validation error
+        # memory_key="chat_history" is now inferred and removed.
     )
 
 def handle_user_input(user_input):
@@ -260,8 +285,16 @@ def handle_user_input(user_input):
         try:
             result = st.session_state.chat_chain.invoke(inputs)
 
-            # Handle both output types gracefully (ChatOllama usually returns AIMessage which has .content)
-            response = result.content if hasattr(result, 'content') else str(result)
+            # Handle HuggingFacePipeline output (it returns a list of dicts)
+            # We need to extract the 'generated_text' from the pipeline's output
+            if isinstance(result, list) and len(result) > 0 and 'generated_text' in result[0]:
+                response = result[0]['generated_text']
+                # The pipeline output might include the prompt itself, so we strip it.
+                # This is a common issue with text-generation pipelines.
+                # A more robust solution might involve specific prompt formatting for `distilgpt2` or other models.
+                response = response.replace(template.format(chat_history=st.session_state.memory.buffer_as_str, input=user_input), "").strip()
+            else:
+                response = str(result) # fallback for unexpected output structure
 
             # Parse thoughts if any
             thought, cleaned_response = parse_thoughts(response)
@@ -297,16 +330,7 @@ def handle_user_input(user_input):
             # Rerun to update chat display
             st.rerun()
 
-        except httpx.ConnectError:
-            st.error(f"Chatbot Error: Could not connect to Ollama server. "
-                     "Please ensure Ollama is running and accessible. Re-run the app once Ollama is active.")
-            st.session_state.chat_messages.append({
-                "role": "bot",
-                "content": "I'm unable to connect to the AI model right now. Please ensure Ollama is running and try again.",
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })
-            st.rerun()
-        except Exception as e:
+        except Exception as e: # Generic exception handling for Hugging Face inference errors
             st.error(f"An unexpected error occurred during chatbot interaction: {e}")
             st.session_state.chat_messages.append({
                 "role": "bot",
@@ -315,8 +339,6 @@ def handle_user_input(user_input):
             })
             st.rerun()
 
-
-# --- REMOVED: handle_image_input function is removed as image upload is no longer supported ---
 
 # --- AI Chatbot ---
 def chatbot():
@@ -327,11 +349,11 @@ def chatbot():
         st.session_state.chat_messages = []
 
     # Display chat messages in a dedicated container for better scrolling
-    st.html('<div class="chat-container">')
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
     for msg in st.session_state.chat_messages:
         div_class = "user-message" if msg["role"] == "user" else "bot-message"
         timestamp_align = "text-align: right;" if msg["role"] == "user" else "text-align: left;"
-        st.html(f"""
+        st.markdown(f"""
         <div style="display: flex; {"justify-content: flex-end;" if msg["role"] == "user" else "justify-content: flex-start;"}">
             <div class="chat-message {div_class}">
                 {msg["content"]}
@@ -340,8 +362,8 @@ def chatbot():
                 </div>
             </div>
         </div>
-        """)
-    st.html('</div>') # Close chat container
+        """, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True) # Close chat container
 
     # Quick actions only shown at the start of a conversation
     if len(st.session_state.chat_messages) == 0:
@@ -360,17 +382,12 @@ def chatbot():
 
     st.markdown("<br>", unsafe_allow_html=True) # Add some space before input
 
-    # REMOVED: uploaded_image file uploader
-    # uploaded_image = st.file_uploader("📎 Upload Screenshot (Optional)", type=["png", "jpg", "jpeg"])
     user_text_input = st.chat_input("Ask Lulu a question...")
 
     current_input = None
 
     if user_text_input:
         current_input = user_text_input
-    # REMOVED: image input handling
-    # elif uploaded_image:
-    #     current_input = handle_image_input(uploaded_image)
 
     if current_input: # Only call handle_user_input if there's valid input
         handle_user_input(current_input)
