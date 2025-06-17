@@ -14,6 +14,7 @@ import json
 import pandas as pd
 import re
 import datetime
+import httpx
 
 
 # --- Model & Memory Setup ---
