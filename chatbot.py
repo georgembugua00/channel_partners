@@ -24,7 +24,7 @@ from sentence_transformers import SentenceTransformer # Direct import for embedd
 @st.cache_resource
 def init_llm_and_memory():
     # Define Hugging Face models to be used
-    TEXT_MODEL_HF = "google/gemma-2b-it"
+    TEXT_MODEL_HF = "gpt2"
     EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2"
 
     llm_instance = None # Use a different name to avoid confusion with global 'llm'
