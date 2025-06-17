@@ -271,7 +271,6 @@ if "chat_chain" not in st.session_state:
         llm=llm, # This is the ChatOllama instance
         memory=st.session_state.memory,
         prompt=prompt,
-        memory_key="chat_history" # Corrected memory key
     )
 
 def handle_user_input(user_input):
