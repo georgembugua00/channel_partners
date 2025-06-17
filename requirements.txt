@@ -13,3 +13,4 @@ langchain
 langchain_ollama
 langchain-community
 streamlit-calendar
+langchain_huggingface
