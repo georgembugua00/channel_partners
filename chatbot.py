@@ -17,7 +17,7 @@ import datetime
 
 # Hugging Face imports
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
+from langchain-huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
 from sentence_transformers import SentenceTransformer # Direct import for embeddings
 
 
