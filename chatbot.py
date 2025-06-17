@@ -8,7 +8,7 @@ import os # For potentially loading API key from environment variables
 # --- Configuration for AI Navigator Anaconda LLM API ---
 # IMPORTANT: Replace with the actual URL and API Key from AI Navigator Anaconda
 AI_NAVIGATOR_API_URL = "http://localhost:8000/generate" # Example: Adjust based on your AI Navigator setup
-AI_NAVIGATOR_API_KEY = os.getenv("AI_NAVIGATOR_API_KEY", "your_default_or_placeholder_key") # Load from environment or provide securely
+AI_NAVIGATOR_API_KEY = os.getenv("AI_NAVIGATOR_API_KEY") # Load from environment or provide securely
 
 # --- Model & Memory Setup (No direct LLM instantiation here, as we're calling a custom API) ---
 @st.cache_resource
