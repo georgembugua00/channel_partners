@@ -379,8 +379,6 @@ def profile_summary():
     </div>
     """)
 
-# Render Streamlit components
-st.set_page_config(layout="wide") # Use wide layout for better spacing
 
 st.html("""
     <style>
