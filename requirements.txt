@@ -6,7 +6,7 @@ dotenv
 faiss-cpu
 streamlit_calendar
 PyPDF2
-transformers==4.38.2 # A more stable version for Python 3.11, will try to work with 3.13
+transformers==4.40.0 # A more stable version for Python 3.11, will try to work with 3.13
 torch==2.7.1 # Updated to a version compatible with Python 3.13.5
 sentence-transformers==2.7.0
 langchain
