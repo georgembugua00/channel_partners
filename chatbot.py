@@ -25,7 +25,7 @@ from sentence_transformers import SentenceTransformer # Direct import for embedd
 def init_llm_and_memory():
     # Define Hugging Face models to be used
     # Updated to 'gpt2' for text generation to reduce memory footprint
-    TEXT_MODEL_HF = "mistralai/Mistral-7B-Instruct-v0.2" # Optimal and resource-friendly text generation model
+    TEXT_MODEL_HF = "openai-community/gpt2-large" # Optimal and resource-friendly text generation model
     EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2" # Optimal and resource-friendly embedding model
 
     llm_instance = None # Use a different name to avoid confusion with global 'llm'
