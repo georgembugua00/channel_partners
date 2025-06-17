@@ -13,7 +13,7 @@ import json
 import pandas as pd
 import re
 import datetime
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers import pipelines, AutoModelForCausalLM, AutoTokenizer
 import langchain_huggingface
 from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
 from sentence_transformers import SentenceTransformer # Direct import for embeddings
