@@ -327,11 +327,11 @@ def chatbot():
         st.session_state.chat_messages = []
 
     # Display chat messages in a dedicated container for better scrolling
-    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    st.html('<div class="chat-container">')
     for msg in st.session_state.chat_messages:
         div_class = "user-message" if msg["role"] == "user" else "bot-message"
         timestamp_align = "text-align: right;" if msg["role"] == "user" else "text-align: left;"
-        st.markdown(f"""
+        st.html(f"""
         <div style="display: flex; {"justify-content: flex-end;" if msg["role"] == "user" else "justify-content: flex-start;"}">
             <div class="chat-message {div_class}">
                 {msg["content"]}
@@ -340,8 +340,8 @@ def chatbot():
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True) # Close chat container
+        """)
+    st.html('</div>') # Close chat container
 
     # Quick actions only shown at the start of a conversation
     if len(st.session_state.chat_messages) == 0:
