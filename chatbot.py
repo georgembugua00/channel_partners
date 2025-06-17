@@ -23,8 +23,8 @@ from sentence_transformers import SentenceTransformer # Direct import for embedd
 @st.cache_resource
 def init_llm_and_memory():
     # Define Hugging Face models to be used
-    TEXT_MODEL_HF = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
-    EMBED_MODEL_HF = "Qwen/Qwen3-Embedding-8B"
+    TEXT_MODEL_HF = "google/gemma-2b-it"
+    EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2"
 
     llm_instance = None # Use a different name to avoid confusion with global 'llm'
     embedder_instance = None # Use a different name
