@@ -26,4 +26,4 @@ jobs:
 
       - name: ▶️ Run chatbot
         run: |
-          python chatbot.py
+          python main.py
