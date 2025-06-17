@@ -22,13 +22,28 @@ def init_llm_and_memory():
     llm = ChatOllama(model="llama3.2", temperature=0.4)
     embedder = OllamaEmbeddings(model="llama3.2")
     
-    # --- Setup Streamlit session state ---
+    # --- New LLM session state variables ---
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
     if "memory" not in st.session_state:
         st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     if "chat_chain" not in st.session_state:
-        st.session_state.chat_chain = None
+        template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
+        Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
+        Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
+        Always respond professionally, concisely, and with context relevant to Airtel's field operations.
+    
+        Current conversation:
+        {chat_history}
+        Human: {input}
+        Assistant:"""
+        prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
+        st.session_state.chat_chain = ConversationChain(
+            llm=llm, # This is the ChatOllama instance
+            memory=st.session_state.memory,
+            prompt=prompt,
+        )
+
 
 # --- Custom CSS for UI styling ---
 def inject_custom_css():
@@ -206,31 +221,6 @@ def format_shop_info(shop_data):
 def is_shop_query(user_input):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in user_input.lower() for k in keywords)
-
-# --- REMOVED: OCR/Visual Reasoning with MiniCPM function ---
-# The analyze_image_with_minicpm function is removed as vision model logic is no longer used.
-
-# --- New LLM session state variables ---
-if "vector_store" not in st.session_state:
-    st.session_state.vector_store = None
-if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-if "chat_chain" not in st.session_state:
-    template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
-    Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
-    Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
-    Always respond professionally, concisely, and with context relevant to Airtel's field operations.
-
-    Current conversation:
-    {chat_history}
-    Human: {input}
-    Assistant:"""
-    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
-    st.session_state.chat_chain = ConversationChain(
-        llm=llm, # This is the ChatOllama instance
-        memory=st.session_state.memory,
-        prompt=prompt,
-    )
 
 def handle_user_input(user_input):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
