@@ -21,7 +21,7 @@ import httpx
 @st.cache_resource
 def init_llm_and_memory():
     llm = ChatOllama(model="llama3.2", temperature=0.4)
-    embedder = OllamaEmbeddings(model="llama3.2")
+    embedder = OllamaEmbeddings(model="mxbai-embed-large")
     
     # --- New LLM session state variables ---
     if "vector_store" not in st.session_state:
