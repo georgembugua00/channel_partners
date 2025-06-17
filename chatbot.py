@@ -32,7 +32,6 @@ def init_llm_and_memory():
 
     try:
         # Load tokenizer and model for text generation
-        st.info(f"Loading text generation model: {TEXT_MODEL_HF} from Hugging Face...")
         text_tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_HF)
         text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_HF)
 
@@ -52,14 +51,12 @@ def init_llm_and_memory():
         st.success(f"Text generation model {TEXT_MODEL_HF} loaded successfully.")
 
         # Initialize Hugging Face embeddings
-        st.info(f"Loading embedding model: {EMBED_MODEL_HF} from Hugging Face...")
         # HuggingFaceEmbeddings handles the SentenceTransformer loading internally
         embedder_instance = HuggingFaceEmbeddings(model_name=EMBED_MODEL_HF)
         st.success(f"Embedding model {EMBED_MODEL_HF} loaded successfully.")
         
     except Exception as e:
         st.error(f"An error occurred during Hugging Face model loading: {e}")
-        st.info("Please check if the model names are correct and if you have sufficient memory/resources (e.g., Streamlit Cloud limits).")
         st.stop() # Stop execution if models cannot be loaded
 
     return llm_instance, embedder_instance
