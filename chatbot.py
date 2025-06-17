@@ -222,7 +222,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
+    with open("shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
