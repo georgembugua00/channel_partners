@@ -1,6 +1,6 @@
 import streamlit as st
 from langchain_ollama import ChatOllama
-from langchain_community.vectorstores import FAISS # Updated import to langchain_community
+from langchain_community.vectorstores import FAISS # Keep if using RAG later, otherwise can remove
 from langchain_community.embeddings import OllamaEmbeddings # Updated import to langchain_community
 from langchain.text_splitter import RecursiveCharacterTextSplitter # Keep if using RAG later, otherwise can remove
 from langchain.docstore.document import Document # Keep if using RAG later
@@ -14,11 +14,10 @@ import json
 import pandas as pd
 import re
 import datetime
-import httpx
-from ollama import Client # For direct Ollama client operations like listing models
+import httpx # Still needed for error handling within handle_user_input, but not for init_llm_and_memory
+# Removed: from ollama import Client # No longer needed for model loading or checks
 
-# --- Ollama Configuration ---
-# Define Ollama Configuration globally as they are constants
+# --- Model & Memory Setup ---
 @st.cache_resource
 def init_llm_and_memory():
     # Define models to be used (ChatOllama and OllamaEmbeddings will default to localhost:11434)
@@ -183,7 +182,7 @@ def inject_custom_css():
 # --- Helper functions for parsing and data loading ---
 def parse_thoughts(response_text):
     # Extract text inside <think>...</think>
-    match = re.search(r"<think>(.*?)</think)", response_text, re.DOTALL)
+    match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
     if match:
         thought = match.group(1).strip()
         cleaned_response = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
@@ -192,7 +191,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("shop_location.json", "r") as f:
+    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
@@ -236,12 +235,12 @@ if "chat_chain" not in st.session_state:
     {chat_history}
     Human: {input}
     Assistant:"""
-    prompt = PromptTemplate(input_variables=["history", "input"], template=template)
+    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
     st.session_state.chat_chain = ConversationChain(
         llm=llm, # This is the ChatOllama instance
         memory=st.session_state.memory,
         prompt=prompt,
-        memory_key="chat_history" # Corrected memory key, though now redundant as Memory will set it.
+        # REMOVED: memory_key="chat_history" as it's now inferred and causes validation error
     )
 
 def handle_user_input(user_input):
