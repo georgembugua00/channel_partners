@@ -1,8 +1,8 @@
 import streamlit as st
 from langchain_ollama import ChatOllama
-from langchain.vectorstores import FAISS # Keep if using RAG later, otherwise can remove
-from langchain.embeddings import OllamaEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter # Keep if using RAG later
+from langchain_community.vectorstores import FAISS # Updated import to langchain_community
+from langchain_community.embeddings import OllamaEmbeddings # Updated import to langchain_community
+from langchain.text_splitter import RecursiveCharacterTextSplitter # Keep if using RAG later, otherwise can remove
 from langchain.docstore.document import Document # Keep if using RAG later
 from langchain.chains import ConversationalRetrievalChain # Keep if using RAG later
 from langchain.memory import ConversationBufferMemory
@@ -15,35 +15,60 @@ import pandas as pd
 import re
 import datetime
 import httpx
+from ollama import Client # For direct Ollama client operations like listing models
 
+# --- Ollama Configuration ---
+# Define Ollama Configuration globally as they are constants
+OLLAMA_HOST_URL = "http://localhost:11434"
+OLLAMA_TEXT_MODEL = "llama3.2" # Text model for general conversation
+OLLAMA_EMBED_MODEL = "nomic-embed-text" # Embedding model
 
 # --- Model & Memory Setup ---
 @st.cache_resource
 def init_llm_and_memory():
-    llm = ChatOllama(model="llama3.2", temperature=0.4)
-    embedder = OllamaEmbeddings(model="nomic-embed-text")
-    
-    # --- New LLM session state variables ---
-    if "vector_store" not in st.session_state:
-        st.session_state.vector_store = None
-    if "memory" not in st.session_state:
-        st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    if "chat_chain" not in st.session_state:
-        template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
-        Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
-        Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
-        Always respond professionally, concisely, and with context relevant to Airtel's field operations.
-    
-        Current conversation:
-        {chat_history}
-        Human: {input}
-        Assistant:"""
-        prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
-        st.session_state.chat_chain = ConversationChain(
-            llm=llm, # This is the ChatOllama instance
-            memory=st.session_state.memory,
-            prompt=prompt,
-        )
+    llm = None
+    embedder = None
+    try:
+        # Initialize Ollama LLM for general text conversations
+        llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
+
+        # Initialize Ollama embeddings
+        embedder = OllamaEmbeddings(model=OLLAqMA_EMBED_MODEL, base_url=OLLAMA_HOST_URL)
+        
+        # Verify connection and presence of required models by trying to list them
+        ollama_checker_client = Client(host=OLLAMA_HOST_URL)
+
+        try:
+            models_info = ollama_checker_client.list() # This will raise an exception if server is not reachable
+            st.success("Successfully connected to Ollama server.")
+        except httpx.ConnectError:
+            st.error(f"Failed to connect to Ollama server at {OLLAMA_HOST_URL}. Please ensure Ollama is running.")
+            st.stop() # Stop the app if no connection
+        except Exception as e:
+            st.error(f"An error occurred while listing Ollama models: {e}. Please check your Ollama setup.")
+            st.stop()
+
+        available_models = [m['name'] for m in models_info.get('models', [])]
+
+        if OLLAMA_TEXT_MODEL not in available_models:
+            st.error(f"Ollama text model '{OLLAMA_TEXT_MODEL}' not found. Please run `ollama pull {OLLAMA_TEXT_MODEL}`.")
+            st.stop()
+        if OLLAMA_EMBED_MODEL not in available_models:
+            st.error(f"Ollama embedding model '{OLLAMA_EMBED_MODEL}' not found. Please run `ollama pull {OLLAMA_EMBED_MODEL}`.")
+            st.stop()
+
+    except httpx.ConnectError:
+        st.error(f"Critical Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
+                 "Please ensure Ollama is running by executing `ollama serve` in your terminal.")
+        st.stop() # Stop execution if the server is unreachable
+    except Exception as e:
+        st.error(f"An unexpected error occurred during Ollama model loading: {e}")
+        st.stop() # Stop execution for other critical errors
+
+    return llm, embedder # Return only llm and embedder
+
+# Use the new function name
+llm, embedder = init_llm_and_memory()
 
 
 # --- Custom CSS for UI styling ---
@@ -188,7 +213,7 @@ def inject_custom_css():
 # --- Helper functions for parsing and data loading ---
 def parse_thoughts(response_text):
     # Extract text inside <think>...</think>
-    match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
+    match = re.search(r"<think>(.*?)</think)", response_text, re.DOTALL)
     if match:
         thought = match.group(1).strip()
         cleaned_response = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
@@ -197,7 +222,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("shop_location.json", "r") as f:
+    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
@@ -222,6 +247,32 @@ def format_shop_info(shop_data):
 def is_shop_query(user_input):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in user_input.lower() for k in keywords)
+
+# --- REMOVED: OCR/Visual Reasoning with MiniCPM function ---
+# The analyze_image_with_minicpm function is removed as vision model logic is no longer used.
+
+# --- New LLM session state variables (moved to global scope) ---
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+if "chat_chain" not in st.session_state:
+    template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
+    Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
+    Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
+    Always respond professionally, concisely, and with context relevant to Airtel's field operations.
+
+    Current conversation:
+    {chat_history}
+    Human: {input}
+    Assistant:"""
+    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
+    st.session_state.chat_chain = ConversationChain(
+        llm=llm, # This is the ChatOllama instance
+        memory=st.session_state.memory,
+        prompt=prompt,
+        memory_key="chat_history" # Corrected memory key, though now redundant as Memory will set it.
+    )
 
 def handle_user_input(user_input):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
