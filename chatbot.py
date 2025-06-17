@@ -13,13 +13,13 @@ import json
 import pandas as pd
 import re
 import datetime
-# Removed: import base64, import io, import httpx, from ollama import Client
-
-# Hugging Face imports
 from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 import langchain_huggingface
 from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
 from sentence_transformers import SentenceTransformer # Direct import for embeddings
+# Removed: import base64, import io, import httpx, from ollama import Client
+
+
 
 
 # --- Model & Memory Setup ---
