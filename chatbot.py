@@ -74,7 +74,7 @@ if "memory" not in st.session_state:
     st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 if "chat_chain" not in st.session_state:
     template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
-    Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
+    Your job is to support Sales Executives who manage over 200 on-the-ground agents. \ Give short answers because Sales Executives are busy and need short consie answers.\
     Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
     Always respond professionally, concisely, and with context relevant to Airtel's field operations.
 
@@ -90,7 +90,7 @@ if "chat_chain" not in st.session_state:
         # memory_key="chat_history" is now inferred from ConversationBufferMemory.
     )
 
-# --- Custom CSS for UI styling ---
+ #--- Custom CSS for UI styling ---
 def inject_custom_css():
     st.html("""
     <style>
@@ -241,7 +241,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("shop_location.json", "r") as f:
+    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
