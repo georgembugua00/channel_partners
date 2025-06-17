@@ -13,9 +13,10 @@ import json
 import pandas as pd
 import re
 import datetime
+import transformers
 
 # Hugging Face imports
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
 from sentence_transformers import SentenceTransformer # Direct import for embeddings (used by HuggingFaceEmbeddings)
 
@@ -36,7 +37,7 @@ def init_llm_and_memory():
         text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_HF)
 
         # Create a Hugging Face pipeline for text generation
-        hf_pipeline = pipeline(
+        hf_pipeline = transformers.pipeline(
             "text-generation",
             model=text_model, # Use the text_model
             tokenizer=text_tokenizer, # Use the text_tokenizer
