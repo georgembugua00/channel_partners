@@ -13,10 +13,9 @@ import json
 import pandas as pd
 import re
 import datetime
-import transformers
 
 # Hugging Face imports
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
 from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
 from sentence_transformers import SentenceTransformer # Direct import for embeddings (used by HuggingFaceEmbeddings)
 
@@ -24,8 +23,9 @@ from sentence_transformers import SentenceTransformer # Direct import for embedd
 @st.cache_resource
 def init_llm_and_memory():
     # Define Hugging Face models to be used
-    TEXT_MODEL_HF = "gpt2"
-    EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2"
+    # Updated to 'gpt2' for text generation to reduce memory footprint
+    TEXT_MODEL_HF = "gpt2" # Optimal and resource-friendly text generation model
+    EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2" # Optimal and resource-friendly embedding model
 
     llm_instance = None # Use a different name to avoid confusion with global 'llm'
     embedder_instance = None # Use a different name
@@ -37,14 +37,15 @@ def init_llm_and_memory():
         text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_HF)
 
         # Create a Hugging Face pipeline for text generation
-        hf_pipeline = transformers.pipeline(
+        hf_pipeline = pipeline(
             "text-generation",
             model=text_model, # Use the text_model
             tokenizer=text_tokenizer, # Use the text_tokenizer
             max_new_tokens=200, # Limit output length to prevent very long responses
             do_sample=True,
             temperature=0.7,
-            pad_token_id=text_tokenizer.eos_token_id # Important for generation with GPT-like models
+            # For gpt2, pad_token_id is usually not an issue, but setting it explicitly is good practice
+            pad_token_id=text_tokenizer.eos_token_id 
         )
         # Wrap the Hugging Face pipeline with LangChain's HuggingFacePipeline
         llm_instance = HuggingFacePipeline(pipeline=hf_pipeline)
@@ -240,7 +241,7 @@ def parse_thoughts(response_text):
 
 # Load shop data from JSON file (ensure this path is correct on your system)
 try:
-    with open("/Users/danielwanganga/Documents/ChatBot/shop_location.json", "r") as f:
+    with open("shop_location.json", "r") as f:
         SHOP_LOCATIONS = json.load(f)
 except FileNotFoundError:
     st.error("Error: 'shop_location.json' not found. Please ensure the file exists at the specified path.")
@@ -286,17 +287,16 @@ def handle_user_input(user_input):
             # Handle HuggingFacePipeline output (it returns a list of dicts)
             # We need to extract the 'generated_text' from the pipeline's output
             if isinstance(result, list) and len(result) > 0 and 'generated_text' in result[0]:
-                response = result[0]['generated_text']
-                # The pipeline output might include the prompt itself, so we strip it.
-                # This is a common issue with text-generation pipelines.
-                # Let's use the memory buffer to reconstruct the prompt string to strip it reliably
-                current_chat_history_str = st.session_state.memory.buffer_as_str
-                # Check if the generated text actually contains the full prompt to avoid incorrect stripping
-                full_prompt_for_stripping = template.format(chat_history=current_chat_history_str, input=user_input)
-                if response.startswith(full_prompt_for_stripping):
-                    response = response[len(full_prompt_for_stripping):].strip()
-                elif response.startswith(user_input): # Sometimes it only repeats the last input
-                    response = response[len(user_input):].strip()
+                raw_generated_text = result[0]['generated_text']
+                
+                # Find the last occurrence of "Assistant:" and take everything after it
+                assistant_tag = "Assistant:"
+                if assistant_tag in raw_generated_text:
+                    response = raw_generated_text.rsplit(assistant_tag, 1)[-1].strip()
+                else:
+                    # Fallback if "Assistant:" isn't found (unlikely if template is consistent)
+                    response = raw_generated_text.strip()
+                    
             else:
                 response = str(result) # fallback for unexpected output structure
 
