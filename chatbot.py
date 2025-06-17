@@ -1,136 +1,95 @@
-import datetime
-import re
-import json
+import streamlit as st
 from langchain_ollama import ChatOllama
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
+from langchain.vectorstores import FAISS
 from langchain.embeddings import OllamaEmbeddings
-from ollama import Client
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.docstore.document import Document
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferMemory
 
-# --- Model & Memory Setup ---
-def init_llm_and_memory():
-    llm = ChatOllama(model="llama3.2", temperature=0.4)
-    embedder = OllamaEmbeddings(model="nomic-embed-text")
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+from PyPDF2 import PdfReader
+import pandas as pd
 
-    prompt_template = PromptTemplate(
-        input_variables=["chat_history", "input"],
-        template="""You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
-Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
-Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
-Always respond professionally, concisely, and with context relevant to Airtel's field operations.
+# --- Initialize LLM + Embeddings ---
+llm = ChatOllama(model="llama3.2", temperature=0.4)
+embedder = OllamaEmbeddings(model="mxbai-embed-large")
 
-Current conversation:
-{chat_history}
-Human: {input}
-Assistant:"""
+# --- Setup Streamlit session state ---
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+if "chat_chain" not in st.session_state:
+    st.session_state.chat_chain = None
+
+# --- File Upload ---
+st.sidebar.title("📁 Upload Knowledge Files")
+uploaded_file = st.sidebar.file_uploader("Upload PDF, CSV, or XLSX", type=["pdf", "csv", "xlsx"])
+
+def process_file(file):
+    docs = []
+    if file.name.endswith(".pdf"):
+        reader = PdfReader(file)
+        raw_text = "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+        docs = [Document(page_content=raw_text)]
+
+    elif file.name.endswith(".csv"):
+        df = pd.read_csv(file)
+        raw_text = df.to_string()
+        docs = [Document(page_content=raw_text)]
+
+    elif file.name.endswith(".xlsx"):
+        df = pd.read_excel(file)
+        raw_text = df.to_string()
+        docs = [Document(page_content=raw_text)]
+
+    # Split and embed
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    splits = splitter.split_documents(docs)
+    st.session_state.vector_store = FAISS.from_documents(splits, embedder)
+
+    # RAG chain with memory
+    st.session_state.chat_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        retriever=st.session_state.vector_store.as_retriever(),
+        memory=st.session_state.memory,
+        return_source_documents=True,
+        output_key = "answer"
     )
+    st.sidebar.success("✅ File indexed and memory enabled!")
 
-    chat_chain = ConversationChain(llm=llm, memory=memory, prompt=prompt_template)
-    return chat_chain, memory, embedder
+if uploaded_file:
+    process_file(uploaded_file)
 
-# --- Shop Utilities ---
-def load_shop_locations(path="shop_location.json"):
-    with open(path, "r") as f:
-        return json.load(f)
+# --- Chat UI ---
+st.title("🤖 Airtel Kenya Sales Executive Assistant")
 
-def find_shop_by_keyword(query, shop_locations):
-    for shop_name, shop_data in shop_locations.items():
-        if shop_name.lower() in query.lower():
-            return shop_data
-    return None
+prompt = st.chat_input("Ask a question about Airtel operations, support, or float...")
 
-def format_shop_info(shop_data):
-    name = shop_data.get("SHOP NAME", "N/A")
-    location = shop_data.get("PHYSICAL LOCATION", "N/A")
-    lat, lon = shop_data.get("Latitude"), shop_data.get("Longitude")
-    maps_link = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}" if lat and lon else ""
-    return f"**{name}**\n📍 {location}\n🕒 {shop_data.get('Business Hours', '')}\n🌍 [View on Maps]({maps_link})"
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-def is_shop_query(text):
-    keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
-    return any(k in text.lower() for k in keywords)
+if prompt:
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
-def inject_custom_css():
-    st.html("""
-    <style>
-        .profile-card {
-            background-color: red;
-            padding: 20px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            box-shadow: 0 2px 10px rgba(255, 255, 255, 0.1);
-        }
-        .chat-message {
-            border-radius: 12px;
-            padding: 10px 15px;
-            margin: 10px 0;
-            max-width: 75%;
-            word-wrap: break-word;
-        }
-        .user-message {
-            background-color: #e0e0e0;
-            color: black;
-            align-self: flex-end;
-            margin-left: auto;
-        }
-        .bot-message {
-            background-color: #f44336;
-            color: white;
-            align-self: flex-start;
-            margin-right: auto;
-        }
-        .timestamp {
-            font-size: 0.75em;
-            color: #999;
-            text-align: right;
-            margin-top: 4px;
-        }
-        .chat-box {
-            display: flex;
-            flex-direction: column;
-        }
-    </style>
-    <script>
-        const chatContainer = window.parent.document.querySelector('.main');
-        if (chatContainer) chatContainer.scrollTop = chatContainer.scrollHeight;
-    </script>
-    """)
+    # RAG + Memory response
+    if st.session_state.chat_chain:
+        result = st.session_state.chat_chain.invoke({"question": prompt})
+        response = result['answer']
+    else:
+        response = llm.invoke([{"role": "user", "content": prompt}]).content
 
-# --- Thought Extraction ---
-def parse_thoughts(response_text):
-    match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
-    if match:
-        thought = match.group(1).strip()
-        cleaned_response = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
-        return thought, cleaned_response
-    return None, response_text
+    with st.chat_message("assistant"):
+        st.markdown(response)
+    st.session_state.messages.append({"role": "assistant", "content": response})
 
-# --- Input Handler ---
-def handle_user_input(user_input, chat_chain, shop_locations, message_history, use_vector_store=False):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    message_history.append({"role": "user", "content": user_input, "timestamp": timestamp})
+# --- Optional Summarize Button ---
+if st.button("🧠 Summarize Chat"):
+    history_text = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in st.session_state.messages])
+    summary_prompt = f"""Summarize the following chat history in bullet points for a Sales Executive at Airtel Kenya:\n\n{history_text}"""
+    summary = llm.invoke([{"role": "user", "content": summary_prompt}]).content
 
-    input_key = "question" if use_vector_store else "input"
-    result = chat_chain.invoke({input_key: user_input})
-
-    # Extract response
-    response = result.get("answer") or result.get("response") or str(result)
-    thought, cleaned_response = parse_thoughts(response)
-    if thought:
-        response = cleaned_response
-
-    message_history.append({"role": "bot", "content": response, "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-
-    # Add shop info if detected
-    if is_shop_query(user_input):
-        shop_data = find_shop_by_keyword(user_input, shop_locations)
-        if shop_data:
-            shop_info = format_shop_info(shop_data)
-            message_history.append({"role": "bot", "content": f"Here's the information for the shop you requested:\n\n{shop_info}", "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-        else:
-            message_history.append({"role": "bot", "content": "Sorry, I couldn’t find a matching shop. Please try specifying the town or shop name more clearly.", "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
-
-    return message_history, thought
+    st.markdown("### 📝 Conversation Summary")
+    st.success(summary)
