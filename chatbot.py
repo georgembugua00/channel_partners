@@ -1,72 +1,37 @@
 import streamlit as st
-from langchain_community.vectorstores import FAISS # Updated import
-from langchain_community.embeddings import HuggingFaceEmbeddings # Using HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.docstore.document import Document
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
-from langchain_core.messages import SystemMessage
-from langchain.chains import ConversationChain
-from langchain.prompts import PromptTemplate
-from PyPDF2 import PdfReader
 import json
-import pandas as pd
-import re
 import datetime
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
-import langchain_huggingface
-from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
-from sentence_transformers import SentenceTransformer # Direct import for embeddings
-# Removed: import base64, import io, import httpx, from ollama import Client
+import requests # Used for making HTTP requests to the AI Navigator API
+import re
+import os # For potentially loading API key from environment variables
 
+# --- Configuration for AI Navigator Anaconda LLM API ---
+# IMPORTANT: Replace with the actual URL and API Key from AI Navigator Anaconda
+AI_NAVIGATOR_API_URL = "http://localhost:8000/generate" # Example: Adjust based on your AI Navigator setup
+AI_NAVIGATOR_API_KEY = os.getenv("AI_NAVIGATOR_API_KEY", "your_default_or_placeholder_key") # Load from environment or provide securely
 
-
-
-# --- Model & Memory Setup ---
+# --- Model & Memory Setup (No direct LLM instantiation here, as we're calling a custom API) ---
 @st.cache_resource
 def init_llm_and_memory():
-    # Define Hugging Face models to be used
-    # Choosing a relatively small model like 'distilgpt2' for text generation
-    # for better compatibility with Streamlit Cloud's free tier.
-    TEXT_MODEL_HF = "distilgpt2"
-    EMBED_MODEL_HF = "sentence-transformers/all-MiniLM-L6-v2" # Efficient embedding model
+    # In this setup, we don't directly instantiate LangChain's LLM here.
+    # Instead, the LLM interaction happens via HTTP requests in handle_user_input.
+    # We still need memory for conversation history.
+    st.info("Initializing conversation memory for AI Navigator integration.")
+    return None, None # No direct llm or embedder objects returned in this custom API setup
 
-    llm = None
-    embedder = None
-    try:
-        # Load tokenizer and model from Hugging Face
-        st.info(f"Loading text model: {TEXT_MODEL_HF} from Hugging Face...")
-        tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_HF)
-        model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_HF)
+# Use the function to initialize memory (llm and embedder will be None)
+_, _ = init_llm_and_memory() # Assign to dummy variables if not used directly
 
-        # Create a Hugging Face pipeline
-        hf_pipeline = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_new_tokens=200, # Limit output length to prevent very long responses
-            do_sample=True,
-            temperature=0.7,
-            pad_token_id=tokenizer.eos_token_id # Important for generation
-        )
-        # Wrap the Hugging Face pipeline with LangChain's HuggingFacePipeline
-        llm = HuggingFacePipeline(pipeline=hf_pipeline)
-        st.success(f"Text model {TEXT_MODEL_HF} loaded successfully.")
-
-        # Initialize Hugging Face embeddings
-        st.info(f"Loading embedding model: {EMBED_MODEL_HF} from Hugging Face...")
-        embedder = HuggingFaceEmbeddings(model_name=EMBED_MODEL_HF)
-        st.success(f"Embedding model {EMBED_MODEL_HF} loaded successfully.")
-        
-    except Exception as e:
-        st.error(f"An error occurred during Hugging Face model loading: {e}")
-        st.info("Please check if the model names are correct and if you have sufficient memory/resources.")
-        st.stop() # Stop execution if models cannot be loaded
-
-    return llm, embedder
-
-# Use the new function name
-llm, embedder = init_llm_and_memory()
+# Initialize session state for chat messages if not already present
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+# Initialize memory and chat_chain outside of the cached function
+if "memory" not in st.session_state:
+    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+if "chat_chain" not in st.session_state:
+    # We won't use LangChain's ConversationChain directly if we're making raw API calls.
+    # The prompt formatting and history management will be handled manually in handle_user_input.
+    st.session_state.chat_chain = None # Set to None or remove if not used at all
 
 
 # --- Custom CSS for UI styling ---
@@ -125,7 +90,7 @@ def inject_custom_css():
             color: white; /* White text for better contrast on red */
             align-self: flex-start;
             margin-right: auto;
-            border-bottom-left-radius: 4px; /* Tail effect */
+            border-bottom-left-radius: 44px; /* Tail effect */
         }
 
         /* Timestamp styling */
@@ -235,7 +200,7 @@ def find_shop_by_keyword(query):
 def format_shop_info(shop_data):
     name = shop_data.get("SHOP NAME", "N/A")
     location = shop_data.get("PHYSICAL LOCATION", "N/A")
-    # plus_code = shop_data.get("Plus Code", "") # Not used in output
+    plus_code = shop_data.get("Plus Code", "")
     lat = shop_data.get("Latitude")
     lon = shop_data.get("Longitude")
     # Corrected Google Maps link format
@@ -246,29 +211,7 @@ def is_shop_query(user_input):
     keywords = ["shop", "location", "nearest shop", "where can I find", "shop near me"]
     return any(k in user_input.lower() for k in keywords)
 
-# --- New LLM session state variables (moved to global scope) ---
-if "vector_store" not in st.session_state:
-    st.session_state.vector_store = None
-if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-if "chat_chain" not in st.session_state:
-    template = """You are Lulu, an intelligent AI assistant working at Airtel Kenya. \
-    Your job is to support Sales Executives who manage over 200 on-the-ground agents. \
-    Help them with operations, float requests, KYC issues, training updates, and urgent tickets. \
-    Always respond professionally, concisely, and with context relevant to Airtel's field operations.
-
-    Current conversation:
-    {chat_history}
-    Human: {input}
-    Assistant:"""
-    prompt = PromptTemplate(input_variables=["chat_history", "input"], template=template)
-    st.session_state.chat_chain = ConversationChain(
-        llm=llm, # This is the HuggingFacePipeline instance
-        memory=st.session_state.memory,
-        prompt=prompt,
-        # memory_key="chat_history" is now inferred and removed.
-    )
-
+# --- Updated handle_user_input to use custom API calls ---
 def handle_user_input(user_input):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -280,34 +223,52 @@ def handle_user_input(user_input):
     })
 
     with st.spinner("Lulu is thinking..."):
-        # For ConversationChain, it always expects 'input'
-        inputs = {"input": user_input}
+        full_prompt = (
+            "You are Lulu, an intelligent AI assistant working at Airtel Kenya. "
+            "Your job is to support Sales Executives who manage over 200 on-the-ground agents. "
+            "Help them with operations, float requests, KYC issues, training updates, and urgent tickets. "
+            "Always respond professionally, concisely, and with context relevant to Airtel's field operations.\n\n"
+            f"Current conversation:\n{st.session_state.memory.buffer_as_str}\n"
+            f"Human: {user_input}\n"
+            "Assistant:"
+        )
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {AI_NAVIGATOR_API_KEY}" # Only if API Key is required
+        }
+        payload = {
+            "prompt": full_prompt,
+            "max_new_tokens": 200, # Adjust as needed for your model and desired response length
+            "temperature": 0.7,
+            # Add other parameters specific to AI Navigator Anaconda's API if available (e.g., top_p, do_sample)
+        }
 
         try:
-            result = st.session_state.chat_chain.invoke(inputs)
+            response = requests.post(AI_NAVIGATOR_API_URL, headers=headers, json=payload, timeout=120) # Add timeout
+            response.raise_for_status() # Raise an exception for HTTP errors (4xx or 5xx)
+            api_response_data = response.json()
 
-            # Handle HuggingFacePipeline output (it returns a list of dicts)
-            # We need to extract the 'generated_text' from the pipeline's output
-            if isinstance(result, list) and len(result) > 0 and 'generated_text' in result[0]:
-                response = result[0]['generated_text']
-                # The pipeline output might include the prompt itself, so we strip it.
-                # This is a common issue with text-generation pipelines.
-                # A more robust solution might involve specific prompt formatting for `distilgpt2` or other models.
-                response = response.replace(template.format(chat_history=st.session_state.memory.buffer_as_str, input=user_input), "").strip()
-            else:
-                response = str(result) # fallback for unexpected output structure
+            # Assuming the response structure contains the generated text in a key like 'generated_text'
+            # You will need to adjust this based on the actual API response from AI Navigator Anaconda
+            generated_text = api_response_data.get("generated_text", "No text generated.")
 
-            # Parse thoughts if any
-            thought, cleaned_response = parse_thoughts(response)
+            # Update LangChain memory with the new interaction
+            st.session_state.memory.save_context({"input": user_input}, {"output": generated_text})
+
+            # Parse thoughts if any (assuming AI Navigator might also output thoughts)
+            thought, cleaned_response = parse_thoughts(generated_text)
             if thought:
                 with st.expander("🤖 Internal reasoning"):
                     st.markdown(thought)
-                response = cleaned_response
+                response_content = cleaned_response
+            else:
+                response_content = generated_text
 
             # Add bot message to history
             st.session_state.chat_messages.append({
                 "role": "bot",
-                "content": response,
+                "content": response_content,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
 
@@ -316,7 +277,6 @@ def handle_user_input(user_input):
                 shop_data = find_shop_by_keyword(user_input)
                 if shop_data:
                     shop_info = format_shop_info(shop_data)
-                    # Add shop info as a separate bot message for clear display
                     st.session_state.chat_messages.append({
                         "role": "bot",
                         "content": f"Here's the information for the shop you requested:\n\n{shop_info}",
@@ -328,10 +288,43 @@ def handle_user_input(user_input):
                         "content": "Sorry, I couldn’t find a matching shop. Please try specifying the town or shop name more clearly.",
                         "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     })
-            # Rerun to update chat display
             st.rerun()
 
-        except Exception as e: # Generic exception handling for Hugging Face inference errors
+        except requests.exceptions.ConnectionError as e:
+            st.error(f"Connection Error: Could not connect to AI Navigator Anaconda server at {AI_NAVIGATOR_API_URL}. "
+                     "Please ensure the server is running and accessible.")
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": "I'm unable to connect to the AI model right now. Please ensure AI Navigator Anaconda server is running and accessible.",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.rerun()
+        except requests.exceptions.HTTPError as e:
+            st.error(f"HTTP Error: An error occurred with the API request: {e}. Response: {e.response.text}")
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": f"The AI model returned an error: {e.response.status_code}. Please check the server logs.",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.rerun()
+        except requests.exceptions.Timeout:
+            st.error(f"Timeout Error: The request to AI Navigator Anaconda server timed out after 120 seconds.")
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": "The AI model is taking too long to respond. Please try again or rephrase your question.",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.rerun()
+        except json.JSONDecodeError:
+            st.error("API Response Error: Could not decode JSON from AI Navigator Anaconda server response. "
+                     "Check server logs for unexpected output format.")
+            st.session_state.chat_messages.append({
+                "role": "bot",
+                "content": "Received an unreadable response from the AI model. Please check server configuration.",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            st.rerun()
+        except Exception as e:
             st.error(f"An unexpected error occurred during chatbot interaction: {e}")
             st.session_state.chat_messages.append({
                 "role": "bot",
@@ -346,8 +339,12 @@ def chatbot():
     st.header("🤖 Airtel AI Assistant - Lulu")
     inject_custom_css()
 
+    # Chat messages are managed here.
+    # st.session_state.chat_messages is initialized in init_llm_and_memory,
+    # but it's more conventional to initialize it directly in chatbot()
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = []
+
 
     # Display chat messages in a dedicated container for better scrolling
     st.markdown('<div class="chat-container">', unsafe_allow_html=True)
