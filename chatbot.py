@@ -15,7 +15,8 @@ import re
 import datetime
 
 # Hugging Face imports
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from langchain_huggingface import HuggingFacePipeline # LangChain wrapper for Hugging Face pipelines
 from sentence_transformers import SentenceTransformer # Direct import for embeddings (used by HuggingFaceEmbeddings)
 
@@ -36,7 +37,7 @@ def init_llm_and_memory():
         text_model = AutoModelForCausalLM.from_pretrained(TEXT_MODEL_HF)
 
         # Create a Hugging Face pipeline for text generation
-        hf_pipeline = pipeline(
+        hf_pipeline = transformers.pipeline(
             "text-generation",
             model=text_model, # Use the text_model
             tokenizer=text_tokenizer, # Use the text_tokenizer
@@ -48,12 +49,12 @@ def init_llm_and_memory():
         )
         # Wrap the Hugging Face pipeline with LangChain's HuggingFacePipeline
         llm_instance = HuggingFacePipeline(pipeline=hf_pipeline)
-        st.success(f"Text generation model {TEXT_MODEL_HF} loaded successfully.")
+        #st.success(f"Text generation model {TEXT_MODEL_HF} loaded successfully.")
 
         # Initialize Hugging Face embeddings
         # HuggingFaceEmbeddings handles the SentenceTransformer loading internally
         embedder_instance = HuggingFaceEmbeddings(model_name=EMBED_MODEL_HF)
-        st.success(f"Embedding model {EMBED_MODEL_HF} loaded successfully.")
+        #st.success(f"Embedding model {EMBED_MODEL_HF} loaded successfully.")
         
     except Exception as e:
         st.error(f"An error occurred during Hugging Face model loading: {e}")
