@@ -7,8 +7,8 @@ faiss-cpu
 streamlit_calendar
 PyPDF2
 transformers
-torch==2.7.1 # Updated to a version compatible with Python 3.13.5
-sentence-transformers==2.7.0
+torch
+sentence-transformers
 langchain
 langchain-community
 streamlit-calendar
