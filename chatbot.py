@@ -14,62 +14,21 @@ import json
 import pandas as pd
 import re
 import datetime
-import base64 # Still needed if you handle base64 for other reasons, but not for image upload here
-import io # Still needed if you handle byte streams for other reasons, but not for image upload here
-import httpx # Import httpx for specific error handling
-from ollama import Client # For direct Ollama client operations like listing models
+
 
 # --- Model & Memory Setup ---
 @st.cache_resource
 def init_llm_and_memory():
-    # Define Ollama Configuration inside the function
-    OLLAMA_HOST_URL = "http://localhost:11434"
-    OLLAMA_TEXT_MODEL = "llama3.2" # Text model for general conversation
-    OLLAMA_EMBED_MODEL = "nomic-embed-text" # Embedding model
-
-    llm = None
-    embedder = None
-    try:
-        # Initialize Ollama LLM for general text conversations
-        llm = ChatOllama(model=OLLAMA_TEXT_MODEL, temperature=0.4, base_url=OLLAMA_HOST_URL)
-
-        # Initialize Ollama embeddings
-        embedder = OllamaEmbeddings(model=OLLAMA_EMBED_MODEL, base_url=OLLAMA_HOST_URL)
-        
-        # Verify connection and presence of required models by trying to list them
-        ollama_checker_client = Client(host=OLLAMA_HOST_URL)
-
-        try:
-            models_info = ollama_checker_client.list() # This will raise an exception if server is not reachable
-            st.success("Successfully connected to Ollama server.")
-        except httpx.ConnectError:
-            st.error(f"Failed to connect to Ollama server at {OLLAMA_HOST_URL}. Please ensure Ollama is running.")
-            st.stop() # Stop the app if no connection
-        except Exception as e:
-            st.error(f"An error occurred while listing Ollama models: {e}. Please check your Ollama setup.")
-            st.stop()
-
-        available_models = [m['name'] for m in models_info.get('models', [])]
-
-        if OLLAMA_TEXT_MODEL not in available_models:
-            st.error(f"Ollama text model '{OLLAMA_TEXT_MODEL}' not found. Please run `ollama pull {OLLAMA_TEXT_MODEL}`.")
-            st.stop()
-        if OLLAMA_EMBED_MODEL not in available_models:
-            st.error(f"Ollama embedding model '{OLLAMA_EMBED_MODEL}' not found. Please run `ollama pull {OLLAMA_EMBED_MODEL}`.")
-            st.stop()
-
-    except httpx.ConnectError:
-        st.error(f"Critical Error: Could not connect to Ollama server at {OLLAMA_HOST_URL}. "
-                 "Please ensure Ollama is running by executing `ollama serve` in your terminal.")
-        st.stop() # Stop execution if the server is unreachable
-    except Exception as e:
-        st.error(f"An unexpected error occurred during Ollama model loading: {e}")
-        st.stop() # Stop execution for other critical errors
-
-    return llm, embedder # Return only llm and embedder
-
-# Use the new function name
-llm, embedder = init_llm_and_memory()
+    llm = ChatOllama(model="llama3.2", temperature=0.4)
+    embedder = OllamaEmbeddings(model="llama3.2")
+    
+    # --- Setup Streamlit session state ---
+    if "vector_store" not in st.session_state:
+        st.session_state.vector_store = None
+    if "memory" not in st.session_state:
+        st.session_state.memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    if "chat_chain" not in st.session_state:
+        st.session_state.chat_chain = None
 
 # --- Custom CSS for UI styling ---
 def inject_custom_css():
