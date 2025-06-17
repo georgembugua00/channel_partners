@@ -1,15 +1,14 @@
 streamlit
 pandas
-requests # Keep if you use requests for shop_location or other external APIs
+requests
 plotly
 dotenv
 faiss-cpu
 streamlit_calendar
 PyPDF2
-transformers
-torch
-sentence-transformers
 langchain
 langchain-community
-streamlit-calendar
 langchain-huggingface
+transformers==4.42.0 # Updated to a more recent and compatible version
+torch==2.3.0 # Updated to a more recent and compatible version for Python 3.11
+sentence-transformers==2.7.0 # Keep this version as it was likely not the root cause
