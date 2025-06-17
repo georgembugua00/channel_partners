@@ -21,7 +21,7 @@ def ticket_view():
     st.divider()
 
     # Database connection
-    conn = sqlite3.connect("/Users/danielwanganga/Documents/Channel Partner/streamlit/channel_partners_agents.db", check_same_thread=False)
+    conn = sqlite3.connect("channel_partners_agents.db", check_same_thread=False)
     cursor = conn.cursor()
 
     # Create table if not exists
