@@ -46,7 +46,7 @@ def ticket_view():
     resolved = df_all[df_all["status"] == "Closed"].shape[0]
     pending = total - resolved
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3,vertical_alignment='bottom')
     col1.metric("Created Tickets", total)
     col2.metric("Resolved", resolved)
     col3.metric("Pending", pending)
